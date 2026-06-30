@@ -65,7 +65,7 @@ class DocGenerator:
 
         # Dependencies
         lines.append("## Dependencies")
-        lines.extend(self._dependency_lines(name, program, graph))
+        lines.extend(self._dependency_lines(name, program, graph, rel_path))
         lines.append("")
 
         # Structure
@@ -99,15 +99,17 @@ class DocGenerator:
 
         return "\n".join(lines) + "\n"
 
-    def _dependency_lines(self, name: str, program: CobolProgram, graph: DependencyGraph) -> list[str]:
+    def _dependency_lines(
+        self, name: str, program: CobolProgram, graph: DependencyGraph, rel_path: str
+    ) -> list[str]:
         out: list[str] = []
         if program.calls:
             for c in program.calls:
                 kind = "dynamic CALL" if c.dynamic else "CALL"
-                out.append(f"- {kind} → `{c.target}`{_cite(program.source_path, c.line)}")
+                out.append(f"- {kind} → `{c.target}`{_cite(rel_path, c.line)}")
         if program.copies:
             for cp in program.copies:
-                out.append(f"- COPY → `{cp.name}`{_cite(program.source_path, cp.line)}")
+                out.append(f"- COPY → `{cp.name}`{_cite(rel_path, cp.line)}")
 
         # Reverse dependencies from the graph (resolve keys to display names).
         def _disp(node_key: str) -> str:

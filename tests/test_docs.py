@@ -28,7 +28,10 @@ def test_program_doc_deterministic(tmp_path):
     store = _estate(tmp_path)
     graph = build_graph(store)
     payroll = next(a for a in store.list_artifacts("cobol") if a.rel_path.endswith("PAYROLL.cbl"))
-    prog = CobolParser().parse(Path(payroll.abs_path).read_text(), kind="program").program
+    # Parse with the absolute path as source_path to guard against it leaking into docs.
+    prog = CobolParser().parse(
+        Path(payroll.abs_path).read_text(), source_path=payroll.abs_path, kind="program"
+    ).program
     store.close()
 
     md = DocGenerator().program_doc(prog, graph, payroll.rel_path, confidence=0.95)
@@ -37,6 +40,8 @@ def test_program_doc_deterministic(tmp_path):
     assert "## Dependencies" in md
     assert "COPY → `EMPREC`" in md
     assert "CALL → `TAXCALC`" in md
+    # Citations must be relative — no absolute/local paths leak into audit docs.
+    assert payroll.abs_path not in md
     assert "Invoked by job(s):** RUNPAY" in md
     assert "`MAIN-PARA`" in md
     assert "WS-TOTAL" in md
