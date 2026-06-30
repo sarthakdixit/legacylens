@@ -65,6 +65,13 @@ Key principles:
 pytest                          # run the test suite
 ```
 
+## Validation
+
+Beyond the unit suite, `legacylens` has been run end-to-end against public COBOL,
+JCL, and PL/I repositories (AWS CardDemo, IBM Bank-of-Z, and others). See
+[docs/VALIDATION.md](docs/VALIDATION.md) for the test matrix, results, and the
+issues that real-world testing surfaced and fixed.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
