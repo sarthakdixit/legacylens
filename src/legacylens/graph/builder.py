@@ -44,7 +44,9 @@ def build_graph(store: IndexStore, parser: CobolParser | None = None) -> Depende
         prog = parser.parse(text, source_path=art.abs_path, kind=art.kind).program
         if prog.is_copybook:
             member = _copybook_member(art.rel_path)
-            graph.add_node(member, NodeType.copybook, source_path=art.rel_path)
+            # Namespace copybook keys so a copybook and a same-named program (common
+            # for CICS commarea copybooks) stay distinct and don't form false cycles.
+            graph.add_node(member, NodeType.copybook, source_path=art.rel_path, key=f"copy:{member}")
         else:
             name = prog.program_id or _copybook_member(art.rel_path)
             graph.add_node(name, NodeType.program, source_path=art.rel_path)
@@ -76,17 +78,22 @@ def build_graph(store: IndexStore, parser: CobolParser | None = None) -> Depende
     for name, prog in program_links:
         rel = prog.source_path
         for copy in prog.copies:
-            graph.add_edge(name, copy.name, EdgeType.copy, source_path=rel, line=copy.line)
+            graph.add_edge(name, f"copy:{copy.name}", EdgeType.copy, source_path=rel, line=copy.line)
         for call in prog.calls:
             edge_type = EdgeType.dynamic_call if call.dynamic else EdgeType.call
             graph.add_edge(name, call.target, edge_type, source_path=rel, line=call.line)
 
     for name, pliprog in pli_links:
         rel = pliprog.source_path
+        # PL/I CALL is usually to an INTERNAL procedure; only treat targets that
+        # are not declared in this file as cross-program (external) references.
+        internal = {p.name for p in pliprog.procedures}
         for target, line in pliprog.calls:
+            if target in internal:
+                continue
             graph.add_edge(name, target, EdgeType.call, source_path=rel, line=line)
         for inc, line in pliprog.includes:
-            graph.add_edge(name, inc, EdgeType.copy, source_path=rel, line=line)
+            graph.add_edge(name, f"copy:{inc}", EdgeType.copy, source_path=rel, line=line)
 
     for rel_path, links, job_key in jcl_links:
         for pgm, line in links.programs:

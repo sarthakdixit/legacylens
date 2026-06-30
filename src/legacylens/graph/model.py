@@ -84,7 +84,9 @@ class DependencyGraph:
         """``src`` and ``dst`` are node keys. An unknown ``dst`` becomes an external
         placeholder (referenced but no source)."""
         if dst not in self.nodes:
-            self.nodes[dst] = Node(name=dst, type=NodeType.external, key=dst)
+            # Strip any namespace prefix (e.g. "copy:") for the display name.
+            display = dst.split(":", 1)[1] if ":" in dst else dst
+            self.nodes[dst] = Node(name=display, type=NodeType.external, key=dst)
         self.edges.append(Edge(src=src, dst=dst, type=type, source_path=source_path, line=line))
 
     # -- queries ------------------------------------------------------------ #

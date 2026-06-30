@@ -112,6 +112,16 @@ def test_pli_block_comment_ignored():
     assert "GHOST" not in targets
 
 
+def test_pli_call_inside_string_literal_is_ignored():
+    # Real-world false positive from the PLI-2000 compiler test corpus.
+    prog = PliParser().parse(
+        " M: PROC OPTIONS(MAIN);\n   PUT LIST('CALL THE PROC FAILED');\n   CALL REALSUB;\n END M;"
+    )
+    targets = {t for t, _ in prog.calls}
+    assert "REALSUB" in targets
+    assert "THE" not in targets  # 'CALL THE' was inside a string literal
+
+
 # --------------------------------------------------------------------------- #
 # Embedding retrieval (stub gateway)
 # --------------------------------------------------------------------------- #

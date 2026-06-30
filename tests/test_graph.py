@@ -145,13 +145,14 @@ def test_build_graph_from_fixtures(tmp_path):
     # Nodes: PAYROLL (program), EMPREC (copybook), RUNPAY (job, namespaced key),
     # TAXCALC (external program), plus datasets from DD DSN.
     assert g.nodes["PAYROLL"].type is NodeType.program
-    assert g.nodes["EMPREC"].type is NodeType.copybook
+    assert g.nodes["copy:EMPREC"].type is NodeType.copybook  # copybooks are namespaced
+    assert g.nodes["copy:EMPREC"].name == "EMPREC"           # display name preserved
     assert g.nodes["job:RUNPAY"].type is NodeType.job
     assert g.nodes["job:RUNPAY"].name == "RUNPAY"  # display name preserved
     assert g.nodes["TAXCALC"].type is NodeType.external
 
     edge_set = {(e.src, e.dst, e.type) for e in g.edges}
-    assert ("PAYROLL", "EMPREC", EdgeType.copy) in edge_set
+    assert ("PAYROLL", "copy:EMPREC", EdgeType.copy) in edge_set
     assert ("PAYROLL", "TAXCALC", EdgeType.call) in edge_set
     assert ("job:RUNPAY", "PAYROLL", EdgeType.exec) in edge_set
 

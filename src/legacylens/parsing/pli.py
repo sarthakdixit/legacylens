@@ -12,9 +12,12 @@ import re
 from dataclasses import dataclass, field
 
 _COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+_STRING_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
 _PROC_RE = re.compile(r"\b([A-Z_][A-Z0-9_]*)\s*:\s*(?:PROC|PROCEDURE)\b(.*)", re.I)
 _MAIN_RE = re.compile(r"OPTIONS\s*\(\s*MAIN\s*\)", re.I)
-_CALL_RE = re.compile(r"\bCALL\s+([A-Z_][A-Z0-9_]*)", re.I)
+# Require a real boundary before CALL so suffixes don't match; targets are never
+# string literals in PL/I, so literals are stripped before scanning (below).
+_CALL_RE = re.compile(r"(?<![A-Z0-9_])CALL\s+([A-Z_][A-Z0-9_]*)", re.I)
 _INCLUDE_RE = re.compile(r"%INCLUDE\s+\(?\s*([A-Z_][A-Z0-9_]*)", re.I)
 _DECLARE_RE = re.compile(r"\b(?:DECLARE|DCL)\b", re.I)
 
@@ -44,17 +47,20 @@ class PliParser:
         lines = clean.splitlines()
 
         for idx, line in enumerate(lines, start=1):
-            for m in _PROC_RE.finditer(line):
+            # Strip string-literal contents so CALL/identifiers inside text (e.g.
+            # PUT LIST('CALL THE PROC')) are not mistaken for real statements.
+            scan = _STRING_LITERAL.sub("''", line)
+            for m in _PROC_RE.finditer(scan):
                 is_main = bool(_MAIN_RE.search(m.group(2)))
                 proc = PliProcedure(name=m.group(1).upper(), line=idx, is_main=is_main)
                 prog.procedures.append(proc)
                 if is_main and prog.name is None:
                     prog.name = proc.name
-            for m in _CALL_RE.finditer(line):
+            for m in _CALL_RE.finditer(scan):
                 prog.calls.append((m.group(1).upper(), idx))
-            for m in _INCLUDE_RE.finditer(line):
+            for m in _INCLUDE_RE.finditer(scan):
                 prog.includes.append((m.group(1).upper(), idx))
-            prog.declare_count += len(_DECLARE_RE.findall(line))
+            prog.declare_count += len(_DECLARE_RE.findall(scan))
 
         if prog.name is None:
             prog.name = (prog.procedures[0].name if prog.procedures else fallback_name.upper()) or None
