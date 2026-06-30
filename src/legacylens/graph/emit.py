@@ -29,11 +29,11 @@ def _sanitize_id(name: str) -> str:
 
 def to_dot(graph: DependencyGraph) -> str:
     lines = ["digraph legacylens {", "  rankdir=LR;", '  node [fontname="monospace"];']
-    for node in sorted(graph.nodes.values(), key=lambda n: n.name):
+    for node in sorted(graph.nodes.values(), key=lambda n: n.key):
         shape = _DOT_SHAPES.get(node.type, "box")
         style = "" if node.defined else ', style=dashed, color="red"'
         label = f"{node.name}\\n({node.type.value})"
-        lines.append(f'  {_sanitize_id(node.name)} [label="{label}", shape={shape}{style}];')
+        lines.append(f'  {_sanitize_id(node.key)} [label="{label}", shape={shape}{style}];')
     for edge in graph.edges:
         attrs = f'label="{edge.type.value}"'
         if edge.type is EdgeType.dynamic_call:
@@ -45,8 +45,8 @@ def to_dot(graph: DependencyGraph) -> str:
 
 def to_mermaid(graph: DependencyGraph) -> str:
     lines = ["graph LR"]
-    for node in sorted(graph.nodes.values(), key=lambda n: n.name):
-        nid = _sanitize_id(node.name)
+    for node in sorted(graph.nodes.values(), key=lambda n: n.key):
+        nid = _sanitize_id(node.key)
         label = f"{node.name}<br/>({node.type.value})"
         if node.type is NodeType.dataset:
             lines.append(f"  {nid}[({label})]")  # rounded/cylinder-ish
@@ -69,8 +69,8 @@ def to_graphml(graph: DependencyGraph) -> str:
         '  <key id="rel" for="edge" attr.name="relationship" attr.type="string"/>',
         '  <graph edgedefault="directed">',
     ]
-    for node in sorted(graph.nodes.values(), key=lambda n: n.name):
-        out.append(f"    <node id={quoteattr(node.name)}>")
+    for node in sorted(graph.nodes.values(), key=lambda n: n.key):
+        out.append(f"    <node id={quoteattr(node.key)}>")
         out.append(f'      <data key="type">{escape(node.type.value)}</data>')
         out.append(f'      <data key="defined">{str(node.defined).lower()}</data>')
         out.append("    </node>")

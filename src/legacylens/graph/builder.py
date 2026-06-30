@@ -67,8 +67,10 @@ def build_graph(store: IndexStore, parser: CobolParser | None = None) -> Depende
         if text is None:
             continue
         links = extract_jcl_links(text, fallback_name=Path(art.rel_path).stem)
-        graph.add_node(links.job_name, NodeType.job, source_path=art.rel_path)
-        jcl_links.append((art.rel_path, links))
+        # Namespace job keys so a job named like the program it runs stays distinct.
+        job_key = f"job:{links.job_name}"
+        graph.add_node(links.job_name, NodeType.job, source_path=art.rel_path, key=job_key)
+        jcl_links.append((art.rel_path, links, job_key))
 
     # ---- pass 2: add edges ------------------------------------------------ #
     for name, prog in program_links:
@@ -86,11 +88,11 @@ def build_graph(store: IndexStore, parser: CobolParser | None = None) -> Depende
         for inc, line in pliprog.includes:
             graph.add_edge(name, inc, EdgeType.copy, source_path=rel, line=line)
 
-    for rel_path, links in jcl_links:
+    for rel_path, links, job_key in jcl_links:
         for pgm, line in links.programs:
-            graph.add_edge(links.job_name, pgm, EdgeType.exec, source_path=rel_path, line=line)
+            graph.add_edge(job_key, pgm, EdgeType.exec, source_path=rel_path, line=line)
         for dsn, line in links.datasets:
             graph.add_node(dsn, NodeType.dataset)
-            graph.add_edge(links.job_name, dsn, EdgeType.dd, source_path=rel_path, line=line)
+            graph.add_edge(job_key, dsn, EdgeType.dd, source_path=rel_path, line=line)
 
     return graph

@@ -109,9 +109,13 @@ class DocGenerator:
             for cp in program.copies:
                 out.append(f"- COPY → `{cp.name}`{_cite(program.source_path, cp.line)}")
 
-        # Reverse dependencies from the graph.
-        callers = [e.src for e in graph.edges if e.dst == name and e.type == EdgeType.call]
-        jobs = [e.src for e in graph.edges if e.dst == name and e.type == EdgeType.exec]
+        # Reverse dependencies from the graph (resolve keys to display names).
+        def _disp(node_key: str) -> str:
+            node = graph.nodes.get(node_key)
+            return node.name if node else node_key
+
+        callers = [_disp(e.src) for e in graph.edges if e.dst == name and e.type == EdgeType.call]
+        jobs = [_disp(e.src) for e in graph.edges if e.dst == name and e.type == EdgeType.exec]
         if callers:
             out.append(f"- **Called by:** {', '.join(sorted(set(callers)))}")
         if jobs:

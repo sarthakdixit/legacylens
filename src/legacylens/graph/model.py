@@ -38,10 +38,15 @@ _DEPENDENCY_EDGES = {EdgeType.call, EdgeType.copy}
 
 @dataclass
 class Node:
-    name: str
+    name: str            # display name (e.g. PROGRAM-ID, member, job, DSN)
     type: NodeType
-    defined: bool = False  # True when we have source for it
+    key: str = ""        # unique identity; jobs are namespaced so they don't
+    defined: bool = False  # collide with a same-named program (very common)
     source_paths: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not self.key:
+            self.key = self.name
 
 
 @dataclass
@@ -59,11 +64,14 @@ class DependencyGraph:
         self.edges: list[Edge] = []
 
     # -- construction ------------------------------------------------------- #
-    def add_node(self, name: str, type: NodeType, source_path: str | None = None) -> Node:
-        node = self.nodes.get(name)
+    def add_node(
+        self, name: str, type: NodeType, source_path: str | None = None, key: str | None = None
+    ) -> Node:
+        node_key = key or name
+        node = self.nodes.get(node_key)
         if node is None:
-            node = Node(name=name, type=type)
-            self.nodes[name] = node
+            node = Node(name=name, type=type, key=node_key)
+            self.nodes[node_key] = node
         # A definition upgrades an external placeholder to its real type.
         if type is not NodeType.external:
             node.type = type
@@ -73,9 +81,10 @@ class DependencyGraph:
         return node
 
     def add_edge(self, src: str, dst: str, type: EdgeType, source_path: str | None = None, line: int = 0) -> None:
+        """``src`` and ``dst`` are node keys. An unknown ``dst`` becomes an external
+        placeholder (referenced but no source)."""
         if dst not in self.nodes:
-            # Referenced but undefined → external placeholder.
-            self.nodes[dst] = Node(name=dst, type=NodeType.external)
+            self.nodes[dst] = Node(name=dst, type=NodeType.external, key=dst)
         self.edges.append(Edge(src=src, dst=dst, type=type, source_path=source_path, line=line))
 
     # -- queries ------------------------------------------------------------ #
@@ -144,7 +153,7 @@ class DependencyGraph:
         return sorted(
             n.name
             for n in self.nodes.values()
-            if n.type is NodeType.program and n.defined and incoming.get(n.name, 0) == 0
+            if n.type is NodeType.program and n.defined and incoming.get(n.key, 0) == 0
         )
 
     def unused_copybooks(self) -> list[str]:
@@ -152,7 +161,7 @@ class DependencyGraph:
         return sorted(
             n.name
             for n in self.nodes.values()
-            if n.type is NodeType.copybook and n.defined and incoming.get(n.name, 0) == 0
+            if n.type is NodeType.copybook and n.defined and incoming.get(n.key, 0) == 0
         )
 
     def unresolved_references(self) -> list[str]:
