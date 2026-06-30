@@ -1,0 +1,14 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. VULN.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 WS-PASSWORD   PIC X(8) VALUE 'S3CR3T!!'.
+       01 WS-SSN        PIC X(9).
+       01 WS-PROG       PIC X(8).
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           MOVE 'admin123' TO WS-PASSWORD.
+           EXEC SQL EXECUTE IMMEDIATE :SQL-STMT END-EXEC.
+           DISPLAY 'SSN IS ' WS-SSN.
+           CALL WS-PROG.
+           STOP RUN.
