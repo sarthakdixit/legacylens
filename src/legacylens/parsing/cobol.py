@@ -32,8 +32,12 @@ _DIVISION_RE = re.compile(r"^\s*(IDENTIFICATION|ID|ENVIRONMENT|DATA|PROCEDURE)\s
 _PROGRAM_ID_RE = re.compile(r"^\s*PROGRAM-ID\b\.?\s*([A-Z0-9][A-Z0-9-]*)", re.I)
 _SECTION_RE = re.compile(r"^\s*([A-Z0-9][A-Z0-9-]*)\s+SECTION\s*\.", re.I)
 _PARAGRAPH_RE = re.compile(r"^\s*([A-Z0-9][A-Z0-9-]*)\s*\.\s*$", re.I)
-_COPY_RE = re.compile(r"\bCOPY\s+([A-Z0-9][A-Z0-9-]*)", re.I)
-_CALL_RE = re.compile(r"""\bCALL\s+(?:'([^']+)'|"([^"]+)"|([A-Z0-9][A-Z0-9-]*))""", re.I)
+# Require a real boundary before COPY/CALL so suffixes like `IMS-CALL` don't match.
+_COPY_RE = re.compile(r"(?<![A-Z0-9-])COPY\s+([A-Z0-9][A-Z0-9-]*)", re.I)
+_CALL_RE = re.compile(
+    r"""(?<![A-Z0-9-])CALL\s+(?:'([^']+)'|"([^"]+)"|([A-Z0-9][A-Z0-9-]*))""", re.I
+)
+_STRING_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
 _DATA_ITEM_RE = re.compile(r"^\s*(\d{1,2})\s+(FILLER|[A-Z0-9][A-Z0-9-]*)\b(.*)$", re.I)
 _PIC_RE = re.compile(r"\bPIC(?:TURE)?\s+(?:IS\s+)?([^\s.]+)", re.I)
 
@@ -108,10 +112,20 @@ class CobolParser:
                 program.program_id_source = "grammar"
                 continue
 
-            # COPY and CALL can occur on data or procedure lines.
+            # COPY and CALL can occur on data or procedure lines. Ignore matches
+            # that fall inside a string literal (e.g. DISPLAY 'GU CALL TO ROOT').
+            spans = [m.span() for m in _STRING_LITERAL.finditer(code)]
+
+            def _in_literal(pos: int, spans=spans) -> bool:
+                return any(s <= pos < e for s, e in spans)
+
             for m in _COPY_RE.finditer(code):
+                if _in_literal(m.start()):
+                    continue
                 program.copies.append(CopyStatement(name=m.group(1).upper(), line=idx))
             for m in _CALL_RE.finditer(code):
+                if _in_literal(m.start()):
+                    continue
                 literal = m.group(1) or m.group(2)
                 if literal:
                     program.calls.append(CallStatement(target=literal.upper(), line=idx, dynamic=False))

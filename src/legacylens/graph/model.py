@@ -29,8 +29,11 @@ class EdgeType(str, enum.Enum):
     dd = "dd"
 
 
-# Edge kinds that represent a code/control dependency for cycle purposes.
-_DEPENDENCY_EDGES = {EdgeType.call, EdgeType.copy, EdgeType.exec}
+# Edge kinds that can form a genuine dependency cycle: program↔program (CALL) and
+# program↔copybook (COPY) recursion. EXEC (job→program) and DD (job→dataset) are
+# excluded — jobs are only edge sources, so a job named like the program it runs
+# (very common) must not register as a self-cycle.
+_DEPENDENCY_EDGES = {EdgeType.call, EdgeType.copy}
 
 
 @dataclass

@@ -36,6 +36,14 @@ def test_cycle_detection():
     assert set(cycles[0]) == {"A", "B"}
 
 
+def test_exec_self_edge_is_not_a_cycle():
+    # Real-world (CardDemo): job CBEXPORT runs EXEC PGM=CBEXPORT. Not a real cycle.
+    g = DependencyGraph()
+    g.add_node("CBEXPORT", NodeType.program)
+    g.add_edge("CBEXPORT", "CBEXPORT", EdgeType.exec)
+    assert g.find_cycles() == []
+
+
 def test_self_loop_is_a_cycle():
     g = DependencyGraph()
     g.add_node("A", NodeType.program)

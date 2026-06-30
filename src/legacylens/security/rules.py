@@ -35,6 +35,15 @@ class RuleContext:
     program: CobolProgram | None = None
 
 
+def _dequote(line: str) -> str:
+    """Blank out string-literal contents so keywords inside messages don't match.
+
+    e.g. `MOVE 'Please enter Password' TO WS-MESSAGE` -> the literal is removed, so
+    the PASSWORD keyword no longer appears and the secret rule does not fire.
+    """
+    return _QUOTED.sub("''", line)
+
+
 def _code_lines(ctx: RuleContext) -> Iterator[tuple[int, str]]:
     """Yield (1-based line number, line) skipping comments for the language."""
     for idx, raw in enumerate(ctx.lines, start=1):
@@ -55,7 +64,9 @@ def rule_hardcoded_secret(ctx: RuleContext) -> Iterable[Finding]:
     if ctx.language != "cobol":
         return
     for idx, line in _code_lines(ctx):
-        if _SECRET_KW.search(line) and _QUOTED.search(line):
+        # Keyword must be outside the literal (the target field), and a literal
+        # value must be present (the assigned secret) — not a message string.
+        if _SECRET_KW.search(_dequote(line)) and _QUOTED.search(line):
             yield Finding(
                 rule_id="LL-SEC-001",
                 title="Hard-coded credential or secret",
@@ -121,7 +132,10 @@ def rule_sensitive_display(ctx: RuleContext) -> Iterable[Finding]:
     if ctx.language != "cobol":
         return
     for idx, line in _code_lines(ctx):
-        if _DISPLAY.search(line) and _SENSITIVE_FIELD.search(line):
+        # The sensitive field must be a real operand, not text inside a message
+        # literal (e.g. DISPLAY 'ERROR READING CARDFILE').
+        dq = _dequote(line)
+        if _DISPLAY.search(dq) and _SENSITIVE_FIELD.search(dq):
             yield Finding(
                 rule_id="LL-SEC-004",
                 title="Sensitive data written to log/output",

@@ -59,6 +59,24 @@ def test_clean_program_has_no_secret_findings():
     assert not any(f.rule_id in {"LL-SEC-001", "LL-SEC-003"} for f in findings)
 
 
+def test_password_in_message_literal_is_not_a_secret():
+    # Real-world false positive from CardDemo: prompt strings mentioning "Password".
+    src = [
+        "       PROCEDURE DIVISION.",
+        "           MOVE 'Please enter Password ...' TO WS-MESSAGE.",
+        "           MOVE 'Wrong Password. Try again' TO WS-MESSAGE.",
+    ]
+    ctx = RuleContext(rel_path="m.cbl", language="cobol", lines=src, program=None)
+    assert not any(f.rule_id == "LL-SEC-001" for f in run_rules(ctx, ["cwe"]))
+
+
+def test_sensitive_keyword_in_message_literal_is_not_flagged():
+    # `DISPLAY 'ERROR READING CARDFILE'` — CARD is inside a message, not an operand.
+    src = ["       PROCEDURE DIVISION.", "           DISPLAY 'ERROR READING CARDFILE'."]
+    ctx = RuleContext(rel_path="m.cbl", language="cobol", lines=src, program=None)
+    assert not any(f.rule_id == "LL-SEC-004" for f in run_rules(ctx, ["cwe"]))
+
+
 def test_comment_lines_do_not_trigger_rules():
     src = [
         "      * MOVE 'topsecret' TO WS-PASSWORD IS JUST A COMMENT",

@@ -72,6 +72,33 @@ def test_dynamic_call_detected():
     assert call.dynamic is True
 
 
+def test_call_inside_string_literal_is_ignored():
+    # Real-world false positive from AWS CardDemo: 'CALL TO' inside a DISPLAY string.
+    src = (
+        "       IDENTIFICATION DIVISION.\n"
+        "       PROGRAM-ID. MSGS.\n"
+        "       PROCEDURE DIVISION.\n"
+        "       MAIN.\n"
+        "           DISPLAY 'GU CALL TO ROOT SEG SUCCESS'.\n"
+        "           DISPLAY 'ROOT GU CALL FAIL:' WS-STATUS.\n"
+    )
+    prog = CobolParser().parse(src, kind="program").program
+    assert prog.calls == []  # no phantom calls to TO / FAIL
+
+
+def test_call_suffix_of_hyphenated_name_is_ignored():
+    # `INSERT-IMS-CALL THRU` must not be read as `CALL THRU`.
+    src = (
+        "       IDENTIFICATION DIVISION.\n"
+        "       PROGRAM-ID. PERF.\n"
+        "       PROCEDURE DIVISION.\n"
+        "       MAIN.\n"
+        "           PERFORM 3200-INSERT-IMS-CALL THRU 3200-EXIT.\n"
+    )
+    prog = CobolParser().parse(src, kind="program").program
+    assert all(c.target != "THRU" for c in prog.calls)
+
+
 def test_comments_are_ignored():
     src = (
         "      * THIS IS A COMMENT WITH CALL 'GHOST'\n"
