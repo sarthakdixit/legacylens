@@ -75,6 +75,54 @@ Key principles:
   (Ollama / vLLM / llama.cpp), with per-task model routing.
 - **Auditable**: every run appends a structured trail to the configured audit log.
 
+### Choosing your LLM provider
+
+legacylens is bring-your-own-LLM. **The API key is never put in the config** — you
+export it as an environment variable and the config only names that variable
+(`api_key_env`). Pick one provider block for `llm.providers`, point
+`routing.default` at it, and export the key:
+
+```powershell
+# PowerShell (Windows) — this session, or `setx NAME "value"` to persist:
+$env:OPENAI_API_KEY = "sk-..."
+```
+```bash
+# bash / Linux / macOS:
+export OPENAI_API_KEY="sk-..."
+```
+
+| Provider | `type` | `base_url` | `model` (example) | key env |
+|---|---|---|---|---|
+| **Local** (Ollama / vLLM / llama.cpp) | `local` | `http://localhost:11434/v1` | `qwen2.5-coder:32b` | — (offline) |
+| **OpenAI** | `openai_compatible` | `https://api.openai.com/v1` | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| **Anthropic (Claude)** | `anthropic` | `https://api.anthropic.com` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | `openai_compatible` | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
+| **Any OpenAI-compatible** (Groq, Together, OpenRouter, LiteLLM…) | `openai_compatible` | your endpoint `/v1` | your model id | your env var |
+
+Example — Google Gemini (free key):
+
+```yaml
+llm:
+  providers:
+    - name: gemini
+      type: openai_compatible
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai
+      model: gemini-2.0-flash
+      api_key_env: GEMINI_API_KEY      # export GEMINI_API_KEY=... ; not stored here
+  routing:
+    default: gemini
+  # optional — enables `embed`/`search` + retrieval-augmented docs & security:
+  # embeddings: { provider: gemini, model: text-embedding-004 }
+```
+
+Then run without `--no-llm` (e.g. `legacylens analyze`, `legacylens doc`) to get
+LLM-assisted findings and documentation. The full set of provider blocks is in
+[examples/audit.example.yaml](examples/audit.example.yaml).
+
+> Note: a cloud provider means code leaves your environment (the cloud host is an
+> allowed endpoint even with `air_gapped: true`). For a strict on-prem engagement,
+> use a local model.
+
 ## Development
 
 ```bash
