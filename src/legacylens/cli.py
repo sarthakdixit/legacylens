@@ -92,6 +92,7 @@ analysis:
 parser:
   backend: regex
   fallback_to_regex: true
+  cache: true            # cache parse results in the index for incremental reuse
 
 index:
   path: .legacylens/index.db
@@ -142,13 +143,22 @@ class Context:
 pass_ctx = click.make_pass_decorator(Context)
 
 
-def _cobol_parser(config: Config, gateway=None):
-    """Build the COBOL parser for the client-selected backend (regex/antlr)."""
-    return build_cobol_parser(
+def _cobol_parser(config: Config, gateway=None, store=None):
+    """Build the COBOL parser for the client-selected backend (regex/antlr).
+
+    When a store is provided and caching is enabled, wrap it in the content-addressed
+    parse cache so unchanged artifacts are parsed once and reused across commands/runs.
+    """
+    base = build_cobol_parser(
         config.parser.backend.value,
         gateway=gateway,
         fallback_to_regex=config.parser.fallback_to_regex,
     )
+    if store is not None and config.parser.cache:
+        from .parsing.cache import CachingCobolParser
+
+        return CachingCobolParser(base, store, backend=config.parser.backend.value)
+    return base
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -255,7 +265,7 @@ def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool) -> 
 
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
-    parser = _cobol_parser(config, gateway)
+    parser = _cobol_parser(config, gateway, store=store)
     try:
         artifacts = store.list_artifacts("cobol")
         totals = {
@@ -365,6 +375,8 @@ def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool) -> 
         log.info("PL/I: %s program(s), %s procedure(s).", totals["pli_programs"], totals["pli_procedures"])
     if tokens_spent:
         log.info("LLM tokens spent: %s.", tokens_spent)
+    if getattr(parser, "misses", None) is not None:
+        log.info("Parse cache: %s hit(s), %s miss(es).", parser.hits, parser.misses)
 
     # Security summary.
     sev = sec_summary["by_severity"]
@@ -416,7 +428,7 @@ def graph(ctx: Context) -> None:
 
     store = IndexStore(config.index.path)
     try:
-        dep_graph = build_graph(store, _cobol_parser(config))
+        dep_graph = build_graph(store, _cobol_parser(config, store=store))
     finally:
         store.close()
 
@@ -479,7 +491,7 @@ def doc(ctx: Context, no_llm: bool) -> None:
 
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
-    parser = _cobol_parser(config, gateway)
+    parser = _cobol_parser(config, gateway, store=store)
     generator = DocGenerator(gateway=gateway)
     docs_dir = config.output.dir / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)

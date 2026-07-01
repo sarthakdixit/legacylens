@@ -44,6 +44,10 @@ Run `legacylens --help` for all commands and `legacylens <cmd> --help` for detai
 Useful flags: `--no-llm` (on `analyze`/`doc`) runs fully deterministically with no model
 calls; `budget.max_tokens` in config caps total LLM spend per run.
 
+Parse results are cached in the index (content-addressed), so unchanged files are
+parsed once and reused across passes, commands, and runs — incremental by default
+(`parser.cache: true`).
+
 ## Configuration
 
 All behavior is driven by a single config file (`audit.yaml` by default; override

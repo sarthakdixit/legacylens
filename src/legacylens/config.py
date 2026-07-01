@@ -133,6 +133,8 @@ class ParserConfig(StrictModel):
     # If the selected backend is unavailable (e.g. the ANTLR parser has not been
     # generated), fall back to the regex parser instead of failing.
     fallback_to_regex: bool = True
+    # Cache parse results in the index (content-addressed) for incremental reuse.
+    cache: bool = True
 
 
 class AnalysisConfig(StrictModel):

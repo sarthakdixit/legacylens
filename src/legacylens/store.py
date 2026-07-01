@@ -69,6 +69,10 @@ class IndexStore:
                 sha256   TEXT NOT NULL,
                 vector   TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS parse_cache (
+                key  TEXT PRIMARY KEY,
+                data TEXT NOT NULL
+            );
             """
         )
         self._conn.execute(
@@ -201,6 +205,24 @@ class IndexStore:
 
         for row in self._conn.execute("SELECT rel_path, vector FROM embeddings"):
             yield row["rel_path"], json.loads(row["vector"])
+
+    # -- parse cache -------------------------------------------------------- #
+    def get_parse(self, key: str) -> dict | None:
+        import json
+
+        row = self._conn.execute(
+            "SELECT data FROM parse_cache WHERE key = ?", (key,)
+        ).fetchone()
+        return json.loads(row["data"]) if row else None
+
+    def put_parse(self, key: str, data: dict) -> None:
+        import json
+
+        self._conn.execute(
+            "INSERT OR REPLACE INTO parse_cache (key, data) VALUES (?, ?)",
+            (key, json.dumps(data)),
+        )
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()

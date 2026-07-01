@@ -115,6 +115,20 @@ to within ~1%. Getting there surfaced (and fixed) a few issues:
 | Starter grammar's `NAME '.'` over-matched sentence endings as paragraphs | anchored paragraph labels to line starts (`NL NAME DOT`) |
 | Verb labels (`EXIT.`, `GOBACK.`) and ID/ENV headers (`AUTHOR.`) counted as paragraphs | listener tracks the division and applies the same verb blocklist as the regex parser |
 
+## Parse cache (incremental performance)
+
+Parse results are cached in the index, content-addressed by (backend, kind,
+sha256). On CardDemo (106 COBOL artifacts):
+
+| Run | Real parses | Cache |
+|---|---|---|
+| Cold (first `analyze`) | 106 | 106 hits (security pass reuses the structural parse instead of re-parsing) |
+| Warm (re-run, no changes) | **0** | 212 hits, 0 misses |
+
+Before this, `analyze` parsed every file twice (structural + security) and `graph`/
+`doc` re-parsed from scratch. Now unchanged files are parsed once and reused across
+passes, commands, and runs — the basis for incremental analysis at scale.
+
 ## Notes
 
 - **PLI-2000** is a PL/I *compiler conformance / torture-test* suite, not
