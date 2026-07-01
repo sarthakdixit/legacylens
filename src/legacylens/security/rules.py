@@ -326,11 +326,16 @@ RULE_PACKS: dict[str, list] = {
 }
 
 
-def run_rules(ctx: RuleContext, packs: list[str]) -> list[Finding]:
-    """Run the rules from the named packs against a context (deduped by rule)."""
-    seen_funcs = []
+def run_rules(ctx: RuleContext, packs: list[str], registry: dict[str, list] | None = None) -> list[Finding]:
+    """Run the rules from the named packs against a context (deduped by rule).
+
+    ``registry`` maps pack name -> [rule functions]; defaults to the built-in packs.
+    Pass a merged registry (built-ins + custom packs) to include client rules.
+    """
+    registry = registry or RULE_PACKS
+    seen_funcs: list = []
     for pack in packs:
-        for fn in RULE_PACKS.get(pack, []):
+        for fn in registry.get(pack, []):
             if fn not in seen_funcs:
                 seen_funcs.append(fn)
     findings: list[Finding] = []

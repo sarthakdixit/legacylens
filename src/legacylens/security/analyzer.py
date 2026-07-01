@@ -14,7 +14,8 @@ from ..parsing import CobolParser
 from ..parsing.model import CobolProgram
 from ..store import IndexStore
 from .model import Finding, Severity
-from .rules import RuleContext, run_rules
+from .compliance import Framework, apply_frameworks
+from .rules import RULE_PACKS, RuleContext, run_rules
 
 log = get_logger()
 
@@ -22,10 +23,20 @@ _VALID_SEVERITIES = {s.value for s in Severity}
 
 
 class SecurityAnalyzer:
-    def __init__(self, rule_packs: list[str], gateway=None, parser: CobolParser | None = None):
+    def __init__(
+        self,
+        rule_packs: list[str],
+        gateway=None,
+        parser: CobolParser | None = None,
+        custom_packs: dict[str, list] | None = None,
+        frameworks: list[Framework] | None = None,
+    ):
         self.rule_packs = rule_packs
         self.gateway = gateway
         self.parser = parser or CobolParser(gateway=gateway)
+        # Built-in packs merged with any client-supplied custom packs.
+        self._registry = {**RULE_PACKS, **(custom_packs or {})}
+        self._frameworks = frameworks or []
 
     def analyze_estate(self, store: IndexStore) -> list[Finding]:
         findings: list[Finding] = []
@@ -48,10 +59,12 @@ class SecurityAnalyzer:
                 lines=text.splitlines(),
                 program=program,
             )
-            findings.extend(run_rules(ctx, self.rule_packs))
+            findings.extend(run_rules(ctx, self.rule_packs, registry=self._registry))
             if self.gateway is not None:
                 findings.extend(self._llm_findings(art.rel_path, art.language, text))
 
+        # Enrich with regulatory control references (e.g. PCI-DSS, NIST).
+        apply_frameworks(findings, self._frameworks)
         findings.sort(key=lambda f: (-f.rank, f.rel_path, f.line))
         return findings
 

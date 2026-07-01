@@ -88,6 +88,7 @@ def to_sarif(findings: list[Finding]) -> str:
                 "requiresHumanReview": f.requires_human_review,
                 "evidence": f.evidence,
                 "remediation": f.remediation,
+                "controls": f.controls,
             },
         }
         if f.suppressed:
@@ -137,7 +138,9 @@ def to_html(findings: list[Finding]) -> str:
             f"<td><code>{escape(f.rel_path)}:{f.line}</code><br><small>id {escape(f.fingerprint())}</small></td>"
             f"<td><strong>{escape(f.title)}</strong> {review}{supp}<br><small>{escape(f.rationale)}</small>"
             f"<br><small><em>Fix:</em> {escape(f.remediation)}</small>"
-            f"<br><small><em>Evidence:</em> <code>{escape(f.evidence)}</code></small></td>"
+            f"<br><small><em>Evidence:</em> <code>{escape(f.evidence)}</code></small>"
+            + (f"<br><small><em>Controls:</em> {escape(', '.join(f.controls))}</small>" if f.controls else "")
+            + "</td>"
             f"<td>{escape(f.source)}<br><small>conf {f.confidence:.2f}</small></td>"
             "</tr>"
         )

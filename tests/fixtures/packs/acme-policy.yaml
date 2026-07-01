@@ -1,0 +1,5 @@
+name: ACME-POLICY
+title: ACME Secure Coding Policy v1
+map:
+  CWE-798: ["SEC-1.1", "SEC-1.2"]
+  CWE-89: ["SEC-3.4"]

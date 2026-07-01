@@ -29,3 +29,62 @@ Notes:
   (planned) and use suppressions/baseline to tune what gates CI.
 
 See [VALIDATION.md](VALIDATION.md) for how these behave on real public repositories.
+
+## Custom rule packs
+
+Add detection rules without writing Python. Point `analysis.compliance.pack_paths`
+at YAML files and list the pack's `name` in `rule_packs`:
+
+```yaml
+# rules/acme.yaml
+name: acme
+rules:
+  - id: ACME-001
+    title: Hard-coded internal hostname
+    severity: medium            # info|low|medium|high|critical
+    cwe: CWE-1051               # optional
+    owasp: null                 # optional
+    languages: [cobol, jcl]     # omit = all languages
+    pattern: "acme-corp\\.internal"   # regex, matched per code line
+    rationale: "..."
+    remediation: "..."
+    confidence: 0.8
+```
+
+```yaml
+analysis:
+  compliance:
+    rule_packs: [cwe, owasp, acme]
+    pack_paths: [rules/acme.yaml]
+```
+
+Comments are skipped; unlike the built-ins, custom rules match the raw line (so they
+can target string-literal contents such as hostnames or dataset names).
+
+## Regulatory compliance frameworks
+
+A framework maps a CWE to control references, enriching each finding with the
+controls it implicates (no new detection rules needed). Built-in: `pci-dss`,
+`nist-800-53` (indicative mappings). Add your own:
+
+```yaml
+# frameworks/acme-policy.yaml
+name: ACME-POLICY
+title: ACME Secure Coding Policy v1
+map:
+  CWE-798: ["SEC-1.1", "SEC-1.2"]
+  CWE-89:  ["SEC-3.4"]
+```
+
+```yaml
+analysis:
+  compliance:
+    frameworks: [pci-dss, nist-800-53]
+    framework_paths: [frameworks/acme-policy.yaml]
+```
+
+Findings then carry `controls` (e.g. `PCI-DSS:8.6.2`) in JSON, SARIF, and HTML.
+`legacylens compliance` summarizes findings grouped by control.
+
+> Built-in control mappings are **indicative** starting points; confirm against the
+> current version of each standard for a formal audit.

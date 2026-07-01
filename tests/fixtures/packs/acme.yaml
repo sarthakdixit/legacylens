@@ -1,0 +1,11 @@
+name: acme
+rules:
+  - id: ACME-001
+    title: Hard-coded internal hostname
+    severity: medium
+    cwe: CWE-1051
+    languages: [cobol, jcl]
+    pattern: "acme-corp\\.internal"
+    rationale: An internal hostname is embedded in source.
+    remediation: Externalize hostnames into configuration.
+    confidence: 0.9

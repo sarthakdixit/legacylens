@@ -92,6 +92,13 @@ legacylens analyze --fail-on high --new-only   # gate only on findings new vs th
 
 Fingerprints are line-independent, so a finding survives edits elsewhere in the file.
 
+**Custom & regulatory compliance packs:** add your own detection rules via YAML
+(`analysis.compliance.pack_paths`) and map findings to regulatory controls with
+built-in (`pci-dss`, `nist-800-53`) or custom frameworks
+(`analysis.compliance.frameworks` / `framework_paths`). Findings carry `controls`
+(e.g. `PCI-DSS:8.6.2`) in every output, and `legacylens compliance` summarizes by
+control. See [docs/RULES.md](docs/RULES.md).
+
 ## COBOL parser backend (client choice)
 
 The COBOL parser backend is selectable in config under `parser.backend`:

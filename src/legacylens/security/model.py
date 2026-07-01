@@ -42,6 +42,12 @@ class Finding:
     owasp: str | None = None
     # Set True when a matching suppression exists (false positive / accepted).
     suppressed: bool = False
+    # Regulatory control references (e.g. "PCI-DSS:8.6.2"), from active frameworks.
+    controls: list[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.controls is None:
+            self.controls = []
 
     def to_dict(self) -> dict:
         return asdict(self)

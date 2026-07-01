@@ -33,7 +33,9 @@ from .logging_setup import get_logger, setup_logging
 from .parsing import JclParser, PliParser, build_cobol_parser
 from .retrieval import Retriever
 from .security import Finding, SecurityAnalyzer, to_html, to_json, to_sarif
+from .security.compliance import resolve_frameworks
 from .security.emit import summarize
+from .security.packs import load_custom_packs
 from .security.model import SEVERITY_RANK
 from .security.state import (
     add_suppression,
@@ -86,6 +88,11 @@ analysis:
     rule_packs:
       - cwe
       - owasp
+    # Regulatory frameworks to map findings to (built-in: pci-dss, nist-800-53).
+    frameworks: []
+    # Custom detection rules / frameworks as YAML files (see docs/RULES.md):
+    # pack_paths: [rules/acme.yaml]
+    # framework_paths: [frameworks/acme-policy.yaml]
 
 # COBOL parser backend: "regex" (default, zero-dependency) or "antlr" (grammar-based;
 # requires a one-time `python scripts/build_antlr.py` build + the `antlr` extra).
@@ -319,8 +326,19 @@ def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool) -> 
             totals["pli_procedures"] += len(p.procedures)
 
         # Security & compliance analysis (deterministic rules + optional LLM advisory).
+        comp = config.analysis.compliance
+        custom_packs = load_custom_packs(comp.pack_paths) if comp.pack_paths else None
+        frameworks = (
+            resolve_frameworks(comp.frameworks, comp.framework_paths)
+            if (comp.frameworks or comp.framework_paths)
+            else None
+        )
         analyzer = SecurityAnalyzer(
-            config.analysis.compliance.rule_packs, gateway=gateway, parser=parser
+            comp.rule_packs,
+            gateway=gateway,
+            parser=parser,
+            custom_packs=custom_packs,
+            frameworks=frameworks,
         )
         findings = analyzer.analyze_estate(store)
         # Apply suppressions (false positives / accepted) before persisting.
@@ -709,6 +727,33 @@ def diff(ctx: Context) -> None:
     log.info("%s new, %s resolved (vs %s baselined).", len(new_findings), len(resolved), len(baseline_set))
     for f in sorted(new_findings, key=lambda x: -x.rank):
         log.info("  NEW  %-8s %s:%s  %s (%s)", f.severity, f.rel_path, f.line, f.title, f.fingerprint())
+
+
+@cli.command()
+@pass_ctx
+def compliance(ctx: Context) -> None:
+    """Summarize findings by regulatory control (needs frameworks configured + analyze)."""
+    import collections
+
+    log = get_logger()
+    config = ctx.config
+    findings = [f for f in _load_stored_findings(config) if not f.suppressed]
+    by_control: collections.Counter = collections.Counter()
+    for f in findings:
+        for control in f.controls:
+            by_control[control] += 1
+    if not by_control:
+        log.warning(
+            "No control mappings on findings. Set analysis.compliance.frameworks "
+            "(e.g. [pci-dss, nist-800-53]) and re-run `analyze`."
+        )
+        return
+    log.info("Findings by regulatory control:")
+    for control, n in sorted(by_control.items()):
+        log.info("  %-22s %s finding(s)", control, n)
+    unmapped = sum(1 for f in findings if not f.controls)
+    if unmapped:
+        log.info("(%s finding(s) not mapped to any active framework control.)", unmapped)
 
 
 def main(argv: list[str] | None = None) -> int:

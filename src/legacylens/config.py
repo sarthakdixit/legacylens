@@ -117,8 +117,16 @@ class LLMConfig(StrictModel):
 
 
 class ComplianceConfig(StrictModel):
-    # v1 ships CWE/OWASP; custom packs can be added by name later.
+    # Packs to run: built-in "cwe"/"owasp" plus any custom pack names loaded from
+    # pack_paths (a pack's YAML `name` makes it selectable here).
     rule_packs: list[str] = Field(default_factory=lambda: ["cwe", "owasp"])
+    # Custom rule-pack YAML files (client-defined detection rules).
+    pack_paths: list[Path] = Field(default_factory=list)
+    # Regulatory frameworks to map findings to: built-in "pci-dss", "nist-800-53",
+    # plus any loaded from framework_paths.
+    frameworks: list[str] = Field(default_factory=list)
+    # Custom framework mapping YAML files.
+    framework_paths: list[Path] = Field(default_factory=list)
 
 
 class ParserBackend(str, enum.Enum):
