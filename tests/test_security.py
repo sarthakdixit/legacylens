@@ -54,6 +54,72 @@ def test_jcl_password_rule():
     assert pw[0].cwe == "CWE-798"
 
 
+def test_debug_code_rule():
+    src = ["       PROCEDURE DIVISION.", "           READY TRACE.", "           EXHIBIT NAMED WS-X."]
+    ctx = RuleContext(rel_path="d.cbl", language="cobol", lines=src, program=None)
+    ids = {f.rule_id for f in run_rules(ctx, ["cwe"])}
+    assert "LL-SEC-007" in ids
+
+
+def test_evaluate_missing_when_other_flagged():
+    src = [
+        "       PROCEDURE DIVISION.",
+        "           EVALUATE WS-CODE",
+        "               WHEN 1 DISPLAY 'ONE'",
+        "               WHEN 2 DISPLAY 'TWO'",
+        "           END-EVALUATE."
+    ]
+    ctx = RuleContext(rel_path="e.cbl", language="cobol", lines=src, program=None)
+    assert any(f.rule_id == "LL-SEC-008" for f in run_rules(ctx, ["cwe"]))
+
+
+def test_evaluate_with_when_other_is_ok():
+    src = [
+        "       PROCEDURE DIVISION.",
+        "           EVALUATE WS-CODE",
+        "               WHEN 1 DISPLAY 'ONE'",
+        "               WHEN OTHER DISPLAY 'DEFAULT'",
+        "           END-EVALUATE."
+    ]
+    ctx = RuleContext(rel_path="e.cbl", language="cobol", lines=src, program=None)
+    assert not any(f.rule_id == "LL-SEC-008" for f in run_rules(ctx, ["cwe"]))
+
+
+def test_nested_evaluate_only_inner_missing_flagged():
+    src = [
+        "       PROCEDURE DIVISION.",
+        "           EVALUATE A",              # outer
+        "               WHEN 1",
+        "                   EVALUATE B",       # inner (no WHEN OTHER)
+        "                       WHEN 9 CONTINUE",
+        "                   END-EVALUATE",
+        "               WHEN OTHER CONTINUE",  # outer has default
+        "           END-EVALUATE."
+    ]
+    ctx = RuleContext(rel_path="e.cbl", language="cobol", lines=src, program=None)
+    hits = [f for f in run_rules(ctx, ["cwe"]) if f.rule_id == "LL-SEC-008"]
+    assert len(hits) == 1  # only the inner EVALUATE lacks WHEN OTHER
+
+
+def test_pli_hardcoded_secret_and_sensitive_output():
+    src = [
+        " M: PROC OPTIONS(MAIN);",
+        "   DCL WS_PASSWORD CHAR(8) INIT('S3CR3T!!');",
+        "   PUT LIST(CUST_SSN);",
+        " END M;",
+    ]
+    ctx = RuleContext(rel_path="p.pli", language="pli", lines=src, program=None)
+    ids = {f.rule_id for f in run_rules(ctx, ["cwe"])}
+    assert "LL-SEC-001" in ids  # hardcoded secret (now covers PL/I)
+    assert "LL-SEC-009" in ids  # sensitive data in PUT output
+
+
+def test_pli_comment_does_not_trigger_secret():
+    src = [" M: PROC; /* PASSWORD = 'x' is just a comment */ END M;"]
+    ctx = RuleContext(rel_path="p.pli", language="pli", lines=src, program=None)
+    assert not any(f.rule_id == "LL-SEC-001" for f in run_rules(ctx, ["cwe"]))
+
+
 def test_clean_program_has_no_secret_findings():
     findings = run_rules(_ctx_for("cobol/PAYROLL.cbl", "cobol"), ["cwe", "owasp"])
     assert not any(f.rule_id in {"LL-SEC-001", "LL-SEC-003"} for f in findings)

@@ -46,6 +46,17 @@ def test_exec_block_does_not_leak_paragraphs():
     assert {p.name for p in prog.paragraphs} == {"MAIN-PARA"}
 
 
+def test_dynamic_cics_transfer_is_low_severity():
+    from legacylens.security.rules import RuleContext, run_rules
+
+    prog = _parse()
+    ctx = RuleContext(rel_path="a.cbl", language="cobol", lines=[], program=prog)
+    dyn = [f for f in run_rules(ctx, ["cwe"]) if f.rule_id == "LL-SEC-005"]
+    # WS-PGM-NAME XCTL is a dynamic CICS transfer → informational (low), not medium.
+    assert dyn and all(f.severity == "low" for f in dyn)
+    assert all("CICS" in f.title for f in dyn)
+
+
 def test_graph_has_cics_and_sql_edges(tmp_path):
     estate = tmp_path / "estate"
     shutil.copytree(FIXTURES / "cics", estate)

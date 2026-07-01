@@ -5,7 +5,7 @@
 `legacylens` ingests legacy/mainframe codebases and produces three co-equal outputs:
 
 - **Dependency graphs** — call/data/include relationships across artifacts.
-- **Security & compliance findings** — mapped to **CWE / OWASP** (extensible rule packs).
+- **Security & compliance findings** — mapped to **CWE / OWASP** (extensible rule packs; see [docs/RULES.md](docs/RULES.md)).
 - **Modern documentation** — human-readable explanations of legacy logic.
 
 It is built to run **on-prem / air-gapped** with **bring-your-own LLM** — point it at

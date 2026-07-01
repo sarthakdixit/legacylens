@@ -30,7 +30,7 @@ class SecurityAnalyzer:
     def analyze_estate(self, store: IndexStore) -> list[Finding]:
         findings: list[Finding] = []
         for art in store.iter_artifacts():  # streamed: bounded memory on large estates
-            if art.language not in ("cobol", "jcl"):
+            if art.language not in ("cobol", "jcl", "pli"):
                 continue
             try:
                 text = _read(art.abs_path)

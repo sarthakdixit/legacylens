@@ -19,12 +19,21 @@ from ..parsing.model import CobolProgram
 from .model import Finding, Severity
 
 _QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
-_SECRET_KW = re.compile(r"(?i)\b(PASSWORD|PASSWD|PASS-WORD|PWD|SECRET|API-?KEY|PASSPHRASE)\b")
+# Bounded by non-letters (so it matches WS-PASSWORD and PL/I WS_PASSWORD, but not
+# words like SECRETARY where the keyword is followed by more letters).
+_SECRET_KW = re.compile(r"(?i)(?<![A-Z])(PASSWORD|PASSWD|PASS-WORD|PWD|SECRET|API-?KEY|PASSPHRASE)(?![A-Z])")
 _JCL_PASSWORD = re.compile(r"(?i)\b(PASSWORD|PASS|PWD)\s*=\s*[^,\s]+")
 _DYNAMIC_SQL = re.compile(r"(?i)\b(EXECUTE\s+IMMEDIATE|PREPARE)\b")
 _SENSITIVE_FIELD = re.compile(r"(?i)\b[\w-]*(PASSWORD|PASSWD|PWD|SSN|SOC-SEC|CARD|PIN|ACCT-NO|ACCOUNT-NO)[\w-]*\b")
 _DISPLAY = re.compile(r"(?i)\bDISPLAY\b")
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_DEBUG_CODE = re.compile(r"(?i)\b(READY\s+TRACE|RESET\s+TRACE|EXHIBIT)\b")
+# Not preceded by "-" so the EVALUATE inside END-EVALUATE is not counted as a new block.
+_EVALUATE = re.compile(r"(?i)(?<![A-Z0-9-])EVALUATE\b")
+_END_EVALUATE = re.compile(r"(?i)\bEND-EVALUATE\b")
+_WHEN_OTHER = re.compile(r"(?i)\bWHEN\s+OTHER\b")
+_PLI_OUTPUT = re.compile(r"(?i)\bPUT\s+(LIST|EDIT|DATA|STRING)\b")
+_PLI_COMMENT = re.compile(r"/\*.*?\*/")
 
 
 @dataclass
@@ -54,6 +63,9 @@ def _code_lines(ctx: RuleContext) -> Iterator[tuple[int, str]]:
         elif ctx.language == "jcl":
             if line.startswith("//*"):
                 continue
+        elif ctx.language == "pli":
+            # Strip single-line block comments so keywords in /* ... */ don't match.
+            line = _PLI_COMMENT.sub(" ", line)
         yield idx, line
 
 
@@ -61,7 +73,7 @@ def _code_lines(ctx: RuleContext) -> Iterator[tuple[int, str]]:
 # Rules
 # --------------------------------------------------------------------------- #
 def rule_hardcoded_secret(ctx: RuleContext) -> Iterable[Finding]:
-    if ctx.language != "cobol":
+    if ctx.language not in ("cobol", "pli"):
         return
     for idx, line in _code_lines(ctx):
         # Keyword must be outside the literal (the target field), and a literal
@@ -157,7 +169,27 @@ def rule_dynamic_call(ctx: RuleContext) -> Iterable[Finding]:
     if ctx.program is None:
         return
     for call in ctx.program.calls:
-        if call.dynamic:
+        if not call.dynamic:
+            continue
+        # A dynamic CICS LINK/XCTL is the ubiquitous CICS pattern and usually benign,
+        # so it is informational; a dynamic COBOL CALL is rarer and rated medium.
+        if call.mechanism.startswith("CICS"):
+            yield Finding(
+                rule_id="LL-SEC-005",
+                title=f"Dynamic CICS program transfer ({call.mechanism})",
+                severity=Severity.low.value,
+                cwe="CWE-94",
+                owasp="A03:2021",
+                rel_path=ctx.rel_path,
+                line=call.line,
+                evidence=f"{call.mechanism} PROGRAM({call.target}) (resolved at runtime)",
+                rationale="A CICS transfer whose program name is resolved at runtime; confirm the name cannot be influenced by untrusted input.",
+                remediation="Ensure the program name is set from trusted, validated values.",
+                confidence=0.4,
+                source="rule",
+                requires_human_review=False,
+            )
+        else:
             yield Finding(
                 rule_id="LL-SEC-005",
                 title="Dynamic program CALL",
@@ -198,6 +230,83 @@ def rule_hardcoded_ip(ctx: RuleContext) -> Iterable[Finding]:
                 break  # one finding per line is enough
 
 
+def rule_debug_code(ctx: RuleContext) -> Iterable[Finding]:
+    if ctx.language != "cobol":
+        return
+    for idx, line in _code_lines(ctx):
+        if _DEBUG_CODE.search(_dequote(line)):
+            yield Finding(
+                rule_id="LL-SEC-007",
+                title="Active debug code left in source",
+                severity=Severity.low.value,
+                cwe="CWE-489",
+                owasp=None,
+                rel_path=ctx.rel_path,
+                line=idx,
+                evidence=line.strip()[:200],
+                rationale="Debugging statements (READY TRACE / EXHIBIT) left in production can leak data and affect behavior.",
+                remediation="Remove debugging code before deploying to production.",
+                confidence=0.85,
+                source="rule",
+                requires_human_review=False,
+            )
+
+
+def rule_evaluate_missing_other(ctx: RuleContext) -> Iterable[Finding]:
+    """Flag EVALUATE blocks with no WHEN OTHER (unhandled cases fall through)."""
+    if ctx.language != "cobol":
+        return
+    stack: list[list] = []  # each entry: [start_line, has_other]
+    for idx, line in _code_lines(ctx):
+        u = _dequote(line)
+        for _ in _EVALUATE.findall(u):
+            stack.append([idx, False])
+        if stack and _WHEN_OTHER.search(u):
+            stack[-1][1] = True
+        for _ in _END_EVALUATE.findall(u):
+            if stack:
+                start, has_other = stack.pop()
+                if not has_other:
+                    yield Finding(
+                        rule_id="LL-SEC-008",
+                        title="EVALUATE without WHEN OTHER (missing default case)",
+                        severity=Severity.medium.value,
+                        cwe="CWE-478",
+                        owasp=None,
+                        rel_path=ctx.rel_path,
+                        line=start,
+                        evidence="EVALUATE ... END-EVALUATE with no WHEN OTHER branch",
+                        rationale="Unhandled values fall through silently, which can mask errors or produce incorrect results.",
+                        remediation="Add a WHEN OTHER branch to handle unexpected values explicitly.",
+                        confidence=0.7,
+                        source="rule",
+                        requires_human_review=False,
+                    )
+
+
+def rule_pli_sensitive_output(ctx: RuleContext) -> Iterable[Finding]:
+    if ctx.language != "pli":
+        return
+    for idx, line in _code_lines(ctx):
+        dq = _dequote(line)
+        if _PLI_OUTPUT.search(dq) and _SENSITIVE_FIELD.search(dq):
+            yield Finding(
+                rule_id="LL-SEC-009",
+                title="Sensitive data written to output",
+                severity=Severity.medium.value,
+                cwe="CWE-532",
+                owasp="A09:2021",
+                rel_path=ctx.rel_path,
+                line=idx,
+                evidence=line.strip()[:200],
+                rationale="A PUT statement writes a sensitive field, risking exposure in logs/output.",
+                remediation="Mask or remove sensitive values before writing them out.",
+                confidence=0.7,
+                source="rule",
+                requires_human_review=False,
+            )
+
+
 # Rules grouped into the named pack(s). CWE and OWASP both resolve to this pack in v1.
 _ALL_RULES = [
     rule_hardcoded_secret,
@@ -206,6 +315,9 @@ _ALL_RULES = [
     rule_sensitive_display,
     rule_dynamic_call,
     rule_hardcoded_ip,
+    rule_debug_code,
+    rule_evaluate_missing_other,
+    rule_pli_sensitive_output,
 ]
 
 RULE_PACKS: dict[str, list] = {
