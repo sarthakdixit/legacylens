@@ -148,6 +148,24 @@ class OutputConfig(StrictModel):
     dir: Path = Field(default=Path("legacylens-out"))
 
 
+_SEVERITY_NAMES = {"info", "low", "medium", "high", "critical"}
+
+
+class FindingsConfig(StrictModel):
+    baseline_path: Path = Field(default=Path(".legacylens/baseline.json"))
+    suppressions_path: Path = Field(default=Path(".legacylens/suppressions.json"))
+    # Default CI gate: fail the run if any non-suppressed finding is at/above this
+    # severity. None = never gate. The CLI --fail-on flag overrides this.
+    fail_on: str | None = None
+
+    @field_validator("fail_on")
+    @classmethod
+    def _valid_severity(cls, v: str | None) -> str | None:
+        if v is not None and v not in _SEVERITY_NAMES:
+            raise ValueError(f"fail_on must be one of {sorted(_SEVERITY_NAMES)}, got '{v}'")
+        return v
+
+
 class AuditConfig(StrictModel):
     log_path: Path = Field(default=Path(".legacylens/audit.log"))
 
@@ -171,6 +189,7 @@ class Config(StrictModel):
     index: IndexConfig = Field(default_factory=IndexConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
+    findings: FindingsConfig = Field(default_factory=FindingsConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     # When true, the LLM gateway (B1) must refuse any endpoint not explicitly
     # listed in the provider config. Defaults on: this is an air-gapped tool.

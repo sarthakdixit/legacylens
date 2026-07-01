@@ -37,12 +37,18 @@ def summarize(findings: list[Finding]) -> dict:
         "by_severity": by_severity,
         "by_source": by_source,
         "requires_human_review": sum(1 for f in findings if f.requires_human_review),
+        "suppressed": sum(1 for f in findings if f.suppressed),
     }
 
 
 def to_json(findings: list[Finding]) -> str:
+    def _row(f: Finding) -> dict:
+        d = f.to_dict()
+        d["fingerprint"] = f.fingerprint()  # so clients can suppress by id
+        return d
+
     return json.dumps(
-        {"summary": summarize(findings), "findings": [f.to_dict() for f in findings]},
+        {"summary": summarize(findings), "findings": [_row(f) for f in findings]},
         indent=2,
     ) + "\n"
 
@@ -60,31 +66,34 @@ def to_sarif(findings: list[Finding]) -> str:
             }
     results = []
     for f in findings:
-        results.append(
-            {
-                "ruleId": f.rule_id,
-                "level": _SARIF_LEVEL.get(f.severity, "warning"),
-                "message": {"text": f"{f.title}: {f.rationale}"},
-                "locations": [
-                    {
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": f.rel_path},
-                            "region": {"startLine": max(f.line, 1)},
-                        }
+        result = {
+            "ruleId": f.rule_id,
+            "level": _SARIF_LEVEL.get(f.severity, "warning"),
+            "message": {"text": f"{f.title}: {f.rationale}"},
+            "partialFingerprints": {"legacylens/v1": f.fingerprint()},
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": f.rel_path},
+                        "region": {"startLine": max(f.line, 1)},
                     }
-                ],
-                "properties": {
-                    "severity": f.severity,
-                    "cwe": f.cwe,
-                    "owasp": f.owasp,
-                    "confidence": f.confidence,
-                    "source": f.source,
-                    "requiresHumanReview": f.requires_human_review,
-                    "evidence": f.evidence,
-                    "remediation": f.remediation,
-                },
-            }
-        )
+                }
+            ],
+            "properties": {
+                "severity": f.severity,
+                "cwe": f.cwe,
+                "owasp": f.owasp,
+                "confidence": f.confidence,
+                "source": f.source,
+                "requiresHumanReview": f.requires_human_review,
+                "evidence": f.evidence,
+                "remediation": f.remediation,
+            },
+        }
+        if f.suppressed:
+            # SARIF-standard suppression so consumers (e.g. code scanning) hide it.
+            result["suppressions"] = [{"kind": "external"}]
+        results.append(result)
     sarif = {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -118,14 +127,15 @@ def to_html(findings: list[Finding]) -> str:
     rows = []
     for f in ordered:
         review = '<span class="review">review</span>' if f.requires_human_review else ""
+        supp = '<span class="supp">suppressed</span>' if f.suppressed else ""
         cwe = f'<a href="https://cwe.mitre.org/data/definitions/{escape(f.cwe.split("-")[-1])}.html">{escape(f.cwe)}</a>' if f.cwe else ""
         rows.append(
-            "<tr>"
+            f'<tr{" class=off" if f.suppressed else ""}>'
             f'<td><span class="chip" style="background:{_HTML_SEVERITY_COLOR.get(f.severity, "#577590")}">{escape(f.severity)}</span></td>'
             f"<td>{escape(f.rule_id)}</td>"
             f"<td>{cwe}{('<br>' + escape(f.owasp)) if f.owasp else ''}</td>"
-            f"<td><code>{escape(f.rel_path)}:{f.line}</code></td>"
-            f"<td><strong>{escape(f.title)}</strong> {review}<br><small>{escape(f.rationale)}</small>"
+            f"<td><code>{escape(f.rel_path)}:{f.line}</code><br><small>id {escape(f.fingerprint())}</small></td>"
+            f"<td><strong>{escape(f.title)}</strong> {review}{supp}<br><small>{escape(f.rationale)}</small>"
             f"<br><small><em>Fix:</em> {escape(f.remediation)}</small>"
             f"<br><small><em>Evidence:</em> <code>{escape(f.evidence)}</code></small></td>"
             f"<td>{escape(f.source)}<br><small>conf {f.confidence:.2f}</small></td>"
@@ -141,6 +151,8 @@ def to_html(findings: list[Finding]) -> str:
   .meta {{ color: #666; margin-bottom: 1rem; }}
   .chip {{ color: #fff; padding: 2px 8px; border-radius: 10px; font-size: .8rem; white-space: nowrap; }}
   .review {{ background:#444; color:#fff; padding:1px 6px; border-radius:8px; font-size:.7rem; }}
+  .supp {{ background:#888; color:#fff; padding:1px 6px; border-radius:8px; font-size:.7rem; }}
+  tr.off {{ opacity:.45; }}
   table {{ border-collapse: collapse; width: 100%; }}
   th, td {{ border-bottom: 1px solid #e5e5e5; padding: 8px; text-align: left; vertical-align: top; }}
   th {{ background:#f5f5f7; }}

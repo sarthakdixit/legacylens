@@ -25,7 +25,7 @@ from . import __version__
 from .audit_log import AuditLog
 from .config import DEFAULT_CONFIG_NAME, Config, OutputFormat, load_config
 from .docs import DocGenerator
-from .errors import LegacyLensError
+from .errors import FindingsGateError, LegacyLensError
 from .graph import build_graph, to_dot, to_graphml, to_mermaid
 from .ingest import Indexer
 from .llm import build_gateway
@@ -34,6 +34,15 @@ from .parsing import JclParser, PliParser, build_cobol_parser
 from .retrieval import Retriever
 from .security import Finding, SecurityAnalyzer, to_html, to_json, to_sarif
 from .security.emit import summarize
+from .security.model import SEVERITY_RANK
+from .security.state import (
+    add_suppression,
+    apply_suppressions,
+    diff as diff_findings,
+    load_baseline,
+    load_suppressions,
+    write_baseline,
+)
 from .store import IndexStore
 
 CONFIG_TEMPLATE = """\
@@ -95,6 +104,13 @@ output:
 
 audit:
   log_path: .legacylens/audit.log
+
+# Findings lifecycle: baseline (diff new vs resolved), suppressions (false
+# positives / accepted findings), and the default CI gate severity.
+findings:
+  baseline_path: .legacylens/baseline.json
+  suppressions_path: .legacylens/suppressions.json
+  fail_on: null          # e.g. "high" — or use `analyze --fail-on high`
 
 # Hard ceiling on total LLM tokens per run (omit / null = unlimited).
 budget:
@@ -222,8 +238,15 @@ def index(ctx: Context) -> None:
 
 @cli.command()
 @click.option("--no-llm", is_flag=True, help="Disable the LLM fallback for unparseable sources.")
+@click.option(
+    "--fail-on",
+    type=click.Choice(["info", "low", "medium", "high", "critical"]),
+    default=None,
+    help="Exit non-zero if a non-suppressed finding is at/above this severity (overrides config).",
+)
+@click.option("--new-only", is_flag=True, help="With --fail-on, gate only on findings new vs the baseline.")
 @pass_ctx
-def analyze(ctx: Context, no_llm: bool) -> None:
+def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool) -> None:
     """Parse sources and run security/compliance analysis."""
     log = get_logger()
     config = ctx.config
@@ -290,6 +313,9 @@ def analyze(ctx: Context, no_llm: bool) -> None:
             config.analysis.compliance.rule_packs, gateway=gateway, parser=parser
         )
         findings = analyzer.analyze_estate(store)
+        # Apply suppressions (false positives / accepted) before persisting.
+        suppressions = load_suppressions(config.findings.suppressions_path)
+        suppressed_count = apply_suppressions(findings, suppressions)
         store.replace_findings([f.to_dict() for f in findings])
         sec_summary = summarize(findings)
         tokens_spent = gateway.tokens_spent if gateway is not None else 0
@@ -343,12 +369,33 @@ def analyze(ctx: Context, no_llm: bool) -> None:
     # Security summary.
     sev = sec_summary["by_severity"]
     log.info(
-        "Security: %s finding(s) [%s] — %s require human review.",
+        "Security: %s finding(s) [%s] — %s suppressed, %s require human review.",
         sec_summary["total"],
         ", ".join(f"{k}={v}" for k, v in sorted(sev.items(), reverse=True)) or "none",
+        suppressed_count,
         sec_summary["requires_human_review"],
     )
+
+    # Baseline diff (new vs resolved), if a baseline exists.
+    baseline = load_baseline(config.findings.baseline_path)
+    new_findings, resolved = diff_findings(findings, baseline)
+    if baseline:
+        log.info("vs baseline: %s new, %s resolved.", len(new_findings), len(resolved))
+
     log.info("Run `legacylens report` to render SARIF/JSON/HTML.")
+
+    # CI gate: fail when a non-suppressed finding meets the threshold.
+    threshold = fail_on or config.findings.fail_on
+    if threshold:
+        pool = new_findings if new_only else findings
+        threshold_rank = SEVERITY_RANK[threshold]
+        offending = [f for f in pool if not f.suppressed and f.rank >= threshold_rank]
+        scope = "new " if new_only else ""
+        if offending:
+            raise FindingsGateError(
+                f"gate failed: {len(offending)} {scope}finding(s) at or above '{threshold}'."
+            )
+        log.info("Gate passed: no %sfinding(s) at or above '%s'.", scope, threshold)
 
 
 _GRAPH_EMITTERS = {
@@ -578,6 +625,78 @@ def search(ctx: Context, query: str, top: int) -> None:
         return
     for hit in hits:
         log.info("%.3f  %s", hit.score, hit.rel_path)
+
+
+def _load_stored_findings(config: Config) -> list[Finding]:
+    if not config.index.path.exists():
+        raise LegacyLensError("no index found — run `legacylens analyze` first.")
+    store = IndexStore(config.index.path)
+    try:
+        return [Finding.from_dict(d) for d in store.list_findings()]
+    finally:
+        store.close()
+
+
+@cli.command()
+@pass_ctx
+def baseline(ctx: Context) -> None:
+    """Accept the current findings as the baseline (future runs diff against it)."""
+    log = get_logger()
+    config = ctx.config
+    findings = _load_stored_findings(config)
+    if not findings:
+        log.warning("No findings to baseline. Run `legacylens analyze` first.")
+        return
+    n = write_baseline(config.findings.baseline_path, findings)
+    ctx.audit_log().record("baseline", project=config.project.name, fingerprints=n)
+    log.info("Baseline written to %s (%s finding(s)).", config.findings.baseline_path, n)
+
+
+@cli.command()
+@click.argument("fingerprint", required=False)
+@click.option("--reason", default="", help="Why this finding is suppressed (recorded).")
+@click.option("--list", "list_", is_flag=True, help="List current findings with their fingerprints.")
+@pass_ctx
+def suppress(ctx: Context, fingerprint: str | None, reason: str, list_: bool) -> None:
+    """Suppress a finding by fingerprint (false positive / accepted), or --list them."""
+    log = get_logger()
+    config = ctx.config
+    if list_:
+        findings = _load_stored_findings(config)
+        if not findings:
+            log.info("No findings. Run `legacylens analyze` first.")
+            return
+        for f in findings:
+            mark = " [suppressed]" if f.suppressed else ""
+            log.info("%s  %-8s %s:%s  %s%s", f.fingerprint(), f.severity, f.rel_path, f.line, f.title, mark)
+        return
+    if not fingerprint:
+        raise LegacyLensError("provide a FINGERPRINT to suppress, or use --list to see them.")
+    added = add_suppression(config.findings.suppressions_path, fingerprint, reason)
+    ctx.audit_log().record(
+        "suppress", project=config.project.name, fingerprint=fingerprint, reason=reason, added=added
+    )
+    if added:
+        log.info("Suppressed %s. Re-run `legacylens analyze` to apply.", fingerprint)
+    else:
+        log.info("%s is already suppressed.", fingerprint)
+
+
+@cli.command()
+@pass_ctx
+def diff(ctx: Context) -> None:
+    """Show findings new vs resolved compared to the baseline."""
+    log = get_logger()
+    config = ctx.config
+    findings = _load_stored_findings(config)
+    baseline_set = load_baseline(config.findings.baseline_path)
+    if not baseline_set:
+        log.warning("No baseline found. Create one with `legacylens baseline`.")
+        return
+    new_findings, resolved = diff_findings(findings, baseline_set)
+    log.info("%s new, %s resolved (vs %s baselined).", len(new_findings), len(resolved), len(baseline_set))
+    for f in sorted(new_findings, key=lambda x: -x.rank):
+        log.info("  NEW  %-8s %s:%s  %s (%s)", f.severity, f.rel_path, f.line, f.title, f.fingerprint())
 
 
 def main(argv: list[str] | None = None) -> int:

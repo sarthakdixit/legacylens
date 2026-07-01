@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import hashlib
 from dataclasses import asdict, dataclass
 
 
@@ -39,6 +40,8 @@ class Finding:
     requires_human_review: bool
     cwe: str | None = None
     owasp: str | None = None
+    # Set True when a matching suppression exists (false positive / accepted).
+    suppressed: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -50,3 +53,11 @@ class Finding:
     @property
     def rank(self) -> int:
         return SEVERITY_RANK.get(self.severity, 0)
+
+    def fingerprint(self) -> str:
+        """Stable identity across runs — deliberately excludes the line number so a
+        finding survives edits above it. Keyed on rule, file, CWE, title, evidence."""
+        blob = "|".join(
+            [self.rule_id, self.rel_path, self.cwe or "", self.title, self.evidence]
+        )
+        return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:16]

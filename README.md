@@ -65,6 +65,29 @@ Key principles:
 pytest                          # run the test suite
 ```
 
+## Findings lifecycle & CI gating
+
+legacylens supports a real audit/CI workflow around findings:
+
+```bash
+legacylens analyze --fail-on high      # exit 6 if any non-suppressed finding >= high
+legacylens suppress --list             # list findings with their (line-independent) fingerprints
+legacylens suppress <fingerprint> --reason "false positive"   # accept / silence one
+legacylens baseline                    # accept current findings as the baseline
+legacylens diff                        # show findings new vs resolved since the baseline
+legacylens analyze --fail-on high --new-only   # gate only on findings new vs the baseline
+```
+
+- **Suppressions** (`.legacylens/suppressions.json`) mark false positives or accepted
+  LLM-advisory findings; they're excluded from gating and shown struck-through in the
+  HTML report and marked in SARIF (`suppressions`).
+- **Baseline** (`.legacylens/baseline.json`) lets you adopt legacylens on a large
+  estate without drowning in pre-existing findings — gate only on what's *new*.
+- **Exit codes**: `6` = gate failure (distinct from tool errors), so CI can tell a
+  policy failure apart from a crash. Configure a default via `findings.fail_on`.
+
+Fingerprints are line-independent, so a finding survives edits elsewhere in the file.
+
 ## COBOL parser backend (client choice)
 
 The COBOL parser backend is selectable in config under `parser.backend`:

@@ -31,3 +31,12 @@ class BudgetExceededError(LegacyLensError):
     """Raised when a run would exceed its configured token budget."""
 
     exit_code = 5
+
+
+class FindingsGateError(LegacyLensError):
+    """Raised when findings meet/exceed the configured --fail-on threshold.
+
+    Distinct exit code so CI can tell a policy gate failure apart from a tool error.
+    """
+
+    exit_code = 6
