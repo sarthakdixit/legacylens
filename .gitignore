@@ -32,3 +32,6 @@ Thumbs.db
 
 # Local config that may contain endpoints/keys references
 audit.local.yaml
+
+# Simple LLM config — may contain an API key; never commit it
+llm_config.yaml

@@ -64,9 +64,14 @@ languages:
 exclude:
   - "**/test/**"
 
-# Bring-your-own LLM. Credentials are read from the named environment variables;
-# they are never stored in this file. In air-gapped mode only the endpoints below
-# may be contacted.
+# Bring-your-own LLM.
+#
+# EASIEST: delete this whole `llm:` block and create `llm_config.yaml` next to this
+# file with just url/model/key (see examples/llm_config.example.yaml).
+#
+# Otherwise configure providers here. Credentials are read from the named environment
+# variables; they are never stored in this file. In air-gapped mode only the
+# endpoints below may be contacted.
 llm:
   providers:
     - name: local

@@ -1,0 +1,30 @@
+# ==========================================================================
+# llm_config.yaml — the EASY way to point legacylens at your LLM.
+#
+# Save this as `llm_config.yaml` next to your audit.yaml (or set
+# `llm_config: <path>` in audit.yaml) and REMOVE the `llm:` block from
+# audit.yaml. legacylens builds the provider from the fields below.
+#
+# You only need three things: url, model, key.
+#
+# ⚠  This file may contain your API key — do NOT commit it. `.gitignore` already
+#     excludes llm_config.yaml. (Prefer `api_key_env` to keep the key in an env
+#     var instead of on disk.)
+# ==========================================================================
+
+type: openai_compatible        # openai_compatible | anthropic | local
+url: https://generativelanguage.googleapis.com/v1beta/openai
+model: gemini-2.0-flash
+key: PASTE_YOUR_API_KEY_HERE
+
+# --- alternatives -----------------------------------------------------------
+# Keep the key out of the file — name an env var to read it from instead:
+# api_key_env: GEMINI_API_KEY
+
+# Enable `embed`/`search` + retrieval-augmented docs & security:
+# embedding_model: text-embedding-004
+
+# --- other providers (swap url/model/type) ---------------------------------
+# OpenAI:      type: openai_compatible  url: https://api.openai.com/v1                        model: gpt-4o-mini
+# Anthropic:   type: anthropic          url: https://api.anthropic.com                        model: claude-sonnet-4-6
+# Local/Ollama:type: local              url: http://localhost:11434/v1                        model: qwen2.5-coder:32b   (no key)

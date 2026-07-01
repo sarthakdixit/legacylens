@@ -77,9 +77,23 @@ Key principles:
 
 ### Choosing your LLM provider
 
-legacylens is bring-your-own-LLM. **The API key is never put in the config** — you
-export it as an environment variable and the config only names that variable
-(`api_key_env`). Pick one provider block for `llm.providers`, point
+**Easiest — a 4-line `llm_config.yaml`.** Create it next to your `audit.yaml` (and
+leave the `llm:` block out of `audit.yaml`); legacylens auto-detects it:
+
+```yaml
+# llm_config.yaml   (this file is git-ignored — it may hold your key)
+type: openai_compatible
+url: https://generativelanguage.googleapis.com/v1beta/openai
+model: gemini-2.0-flash
+key: PASTE_YOUR_KEY_HERE     # or use `api_key_env: GEMINI_API_KEY` to keep it in an env var
+```
+
+That's it — run `legacylens analyze` / `doc`. Swap `type`/`url`/`model` for any
+provider (see [examples/llm_config.example.yaml](examples/llm_config.example.yaml)).
+
+**Advanced — a full `llm:` block** (multiple providers, per-task routing). Here the
+API key is never in the config — you export it as an environment variable and name
+it via `api_key_env`. Pick one provider block for `llm.providers`, point
 `routing.default` at it, and export the key:
 
 ```powershell

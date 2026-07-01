@@ -11,6 +11,7 @@ precise, user-readable error rather than blowing up deep inside the pipeline.
 from __future__ import annotations
 
 import enum
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,12 @@ from .errors import ConfigError
 
 CONFIG_VERSION = 1
 DEFAULT_CONFIG_NAME = "audit.yaml"
+# Simple, single-model LLM file (url/model/key) — the easy alternative to a full
+# `llm:` block. Auto-detected next to audit.yaml when no `llm:` block is present.
+DEFAULT_LLM_CONFIG_NAME = "llm_config.yaml"
+# Env var an inline `key:` from llm_config.yaml is injected into at load time, so the
+# provider still reads credentials from the environment (never from a stored field).
+_INJECTED_KEY_ENV = "LEGACYLENS_LLM_KEY"
 
 
 class Language(str, enum.Enum):
@@ -196,7 +203,10 @@ class Config(StrictModel):
     project: ProjectConfig
     languages: list[Language] = Field(min_length=1)
     exclude: list[str] = Field(default_factory=list)
-    llm: LLMConfig
+    # Either an inline `llm:` block, or `llm_config:` pointing at a simple
+    # url/model/key file (auto-detected as llm_config.yaml when both are omitted).
+    llm: LLMConfig | None = None
+    llm_config: Path | None = None
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     parser: ParserConfig = Field(default_factory=ParserConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
@@ -219,6 +229,8 @@ class Config(StrictModel):
 
     def validate_cross_references(self) -> None:
         """Validate references that span sections (e.g. routing -> provider names)."""
+        if self.llm is None:
+            return
         known = self.llm.provider_names()
         for task, provider in self.llm.routing.resolved().items():
             if provider not in known:
@@ -255,13 +267,75 @@ def load_config(path: str | Path) -> Config:
     if not isinstance(raw, dict):
         raise ConfigError(f"config root must be a mapping, got {type(raw).__name__}: {path}")
 
+    # If there's no inline `llm:` block, build one from a simple llm_config file.
+    if "llm" not in raw:
+        _resolve_llm_config(raw, base_dir=path.parent)
+
     try:
         config = Config.model_validate(raw)
     except ValidationError as exc:
         raise ConfigError(_format_validation_error(path, exc)) from exc
 
+    if config.llm is None:
+        raise ConfigError(
+            "no LLM provider configured — add an `llm:` block, or create "
+            f"`{DEFAULT_LLM_CONFIG_NAME}` (url/model/key) next to {path.name} "
+            "(see examples/llm_config.example.yaml)."
+        )
+
     config.validate_cross_references()
     return config
+
+
+def _resolve_llm_config(raw: dict, base_dir: Path) -> None:
+    """Populate ``raw['llm']`` from a simple llm_config file when present.
+
+    Path resolution: explicit ``llm_config:`` in the config, else a default
+    ``llm_config.yaml`` next to the main config. No-op if neither exists (the
+    missing-``llm`` error is raised later with guidance)."""
+    ref = raw.get("llm_config")
+    if ref:
+        llm_path = Path(ref)
+        if not llm_path.is_absolute():
+            llm_path = base_dir / llm_path
+        if not llm_path.exists():
+            raise ConfigError(f"llm_config file not found: {llm_path}")
+    else:
+        llm_path = base_dir / DEFAULT_LLM_CONFIG_NAME
+        if not llm_path.exists():
+            return
+
+    try:
+        simple = yaml.safe_load(llm_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:  # pragma: no cover - message passthrough
+        raise ConfigError(f"could not parse {llm_path}: {exc}") from exc
+    if not isinstance(simple, dict):
+        raise ConfigError(f"{llm_path} must be a mapping with url/model/key.")
+
+    model = simple.get("model")
+    if not model:
+        raise ConfigError(f"{llm_path}: 'model' is required.")
+
+    provider: dict[str, Any] = {
+        "name": "default",
+        "type": simple.get("type", "openai_compatible"),
+        "model": model,
+    }
+    if simple.get("url"):
+        provider["base_url"] = simple["url"]
+
+    # Inline `key:` is injected into the environment so the provider still reads it
+    # from an env var; `api_key_env:` names an existing env var directly.
+    if simple.get("key"):
+        os.environ[_INJECTED_KEY_ENV] = str(simple["key"])
+        provider["api_key_env"] = _INJECTED_KEY_ENV
+    elif simple.get("api_key_env"):
+        provider["api_key_env"] = simple["api_key_env"]
+
+    llm: dict[str, Any] = {"providers": [provider], "routing": {"default": "default"}}
+    if simple.get("embedding_model"):
+        llm["embeddings"] = {"provider": "default", "model": simple["embedding_model"]}
+    raw["llm"] = llm
 
 
 def _format_validation_error(path: Path, exc: ValidationError) -> str:
