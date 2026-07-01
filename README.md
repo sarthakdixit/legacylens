@@ -16,13 +16,53 @@ leaves your environment.
 > scaffold, BYO-LLM gateway, ingestion/index, COBOL/JCL/PL-I parsing, dependency
 > graph, CWE/OWASP security analysis, documentation, retrieval, and cost controls.
 
-## Install (development)
+## Installation
+
+`legacylens` installs a single CLI command that works from **cmd, PowerShell, or any
+terminal** on Windows, macOS, and Linux.
+
+### Recommended — `pipx` (puts `legacylens` on PATH for every shell, all OSes)
+
+```bash
+python -m pip install --user pipx
+python -m pipx ensurepath          # one-time: adds the CLI dir to PATH
+pipx install legacylens            # from PyPI  (or:  pipx install .  from a clone)
+```
+
+Or use the bundled helper from a clone:
+
+```bash
+# Windows (PowerShell):
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+# macOS / Linux:
+bash scripts/install.sh
+```
+
+**Open a new terminal** afterwards (so PATH refreshes), then:
+
+```bash
+legacylens --help
+```
+
+### Alternative — `pip`
+
+```bash
+pip install legacylens             # or:  pip install .   from a clone
+```
+
+This also creates the `legacylens` command. On Windows, if the shell can't find it,
+your Python **Scripts** directory isn't on PATH — either use `pipx` (above), run
+`py -m legacylens ...`, or add `...\PythonXX\Scripts` to PATH. `pipx` avoids this
+entirely.
+
+### Development (editable, with tests)
 
 ```bash
 python -m venv .venv
 . .venv/Scripts/activate        # Windows
 # source .venv/bin/activate     # Linux/macOS
 pip install -e ".[dev]"
+pytest
 ```
 
 ## Quick start
