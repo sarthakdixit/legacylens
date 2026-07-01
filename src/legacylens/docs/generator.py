@@ -105,11 +105,16 @@ class DocGenerator:
         out: list[str] = []
         if program.calls:
             for c in program.calls:
-                kind = "dynamic CALL" if c.dynamic else "CALL"
+                if c.mechanism.startswith("CICS"):
+                    kind = c.mechanism  # CICS-LINK / CICS-XCTL
+                else:
+                    kind = "dynamic CALL" if c.dynamic else "CALL"
                 out.append(f"- {kind} → `{c.target}`{_cite(rel_path, c.line)}")
         if program.copies:
             for cp in program.copies:
                 out.append(f"- COPY → `{cp.name}`{_cite(rel_path, cp.line)}")
+        for t in getattr(program, "sql_tables", []):
+            out.append(f"- SQL {t.op} → table `{t.name}`{_cite(rel_path, t.line)}")
 
         # Reverse dependencies from the graph (resolve keys to display names).
         def _disp(node_key: str) -> str:

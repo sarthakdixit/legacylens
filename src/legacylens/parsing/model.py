@@ -48,6 +48,17 @@ class CallStatement:
     # target is not statically known.
     dynamic: bool = False
     inferred: bool = False
+    # How control transfers: "CALL" (COBOL), "CICS-LINK", or "CICS-XCTL".
+    mechanism: str = "CALL"
+
+
+@dataclass
+class SqlTableRef:
+    """A DB2/SQL table referenced from an embedded EXEC SQL statement."""
+
+    name: str
+    line: int
+    op: str  # SELECT | INSERT | UPDATE | DELETE | JOIN
 
 
 @dataclass
@@ -62,6 +73,7 @@ class CobolProgram:
     data_items: list[DataItem] = field(default_factory=list)
     copies: list[CopyStatement] = field(default_factory=list)
     calls: list[CallStatement] = field(default_factory=list)
+    sql_tables: list[SqlTableRef] = field(default_factory=list)
     source_path: str | None = None
 
 

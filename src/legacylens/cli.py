@@ -242,6 +242,7 @@ def analyze(ctx: Context, no_llm: bool) -> None:
             "calls": 0,
             "copies": 0,
             "data_items": 0,
+            "sql_tables": 0,
             "low_confidence": 0,
             "llm_assisted": 0,
             "jcl_jobs": 0,
@@ -265,6 +266,7 @@ def analyze(ctx: Context, no_llm: bool) -> None:
             totals["calls"] += len(prog.calls)
             totals["copies"] += len(prog.copies)
             totals["data_items"] += len(prog.data_items)
+            totals["sql_tables"] += len(prog.sql_tables)
             if result.confidence < 0.5:
                 totals["low_confidence"] += 1
             if "llm" in result.method:  # e.g. "grammar+llm" — not the ANTLR backend
@@ -317,11 +319,12 @@ def analyze(ctx: Context, no_llm: bool) -> None:
             totals["copybooks"],
         )
         log.info(
-            "Structure: %s paragraph(s), %s CALL(s), %s COPY(s), %s data item(s).",
+            "Structure: %s paragraph(s), %s CALL(s) (incl. CICS), %s COPY(s), %s data item(s), %s SQL table ref(s).",
             totals["paragraphs"],
             totals["calls"],
             totals["copies"],
             totals["data_items"],
+            totals["sql_tables"],
         )
         if totals["low_confidence"]:
             log.warning("%s artifact(s) parsed with low confidence.", totals["low_confidence"])

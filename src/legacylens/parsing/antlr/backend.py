@@ -9,6 +9,10 @@ pipeline is identical regardless of backend.
 Requires ``antlr4-python3-runtime`` and a generated parser under ``_generated/``.
 Absent either, construction raises :class:`AntlrUnavailable` and the factory falls
 back to the regex backend.
+
+Note: this backend does not yet extract ``EXEC CICS`` / ``EXEC SQL`` blocks (a
+grammar enhancement); the regex backend does. Prefer the regex backend for CICS/DB2
+code until the grammar covers EXEC blocks.
 """
 
 from __future__ import annotations

@@ -19,6 +19,7 @@ _DOT_SHAPES = {
     NodeType.copybook: "note",
     NodeType.job: "component",
     NodeType.dataset: "cylinder",
+    NodeType.table: "cylinder",
     NodeType.external: "box",
 }
 
@@ -48,7 +49,7 @@ def to_mermaid(graph: DependencyGraph) -> str:
     for node in sorted(graph.nodes.values(), key=lambda n: n.key):
         nid = _sanitize_id(node.key)
         label = f"{node.name}<br/>({node.type.value})"
-        if node.type is NodeType.dataset:
+        if node.type in (NodeType.dataset, NodeType.table):
             lines.append(f"  {nid}[({label})]")  # rounded/cylinder-ish
         elif node.defined:
             lines.append(f"  {nid}[{label}]")

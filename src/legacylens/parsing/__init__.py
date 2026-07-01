@@ -19,6 +19,7 @@ from .model import (
     Paragraph,
     ParseResult,
     Section,
+    SqlTableRef,
 )
 from .pli import PliParser, PliProcedure, PliProgram
 
@@ -32,6 +33,7 @@ __all__ = [
     "DataItem",
     "CopyStatement",
     "CallStatement",
+    "SqlTableRef",
     "JclParser",
     "JclJob",
     "JclStep",

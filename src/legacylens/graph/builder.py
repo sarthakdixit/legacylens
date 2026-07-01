@@ -80,8 +80,16 @@ def build_graph(store: IndexStore, parser: CobolParser | None = None) -> Depende
         for copy in prog.copies:
             graph.add_edge(name, f"copy:{copy.name}", EdgeType.copy, source_path=rel, line=copy.line)
         for call in prog.calls:
-            edge_type = EdgeType.dynamic_call if call.dynamic else EdgeType.call
+            if call.mechanism.startswith("CICS"):
+                edge_type = EdgeType.cics
+            elif call.dynamic:
+                edge_type = EdgeType.dynamic_call
+            else:
+                edge_type = EdgeType.call
             graph.add_edge(name, call.target, edge_type, source_path=rel, line=call.line)
+        for tbl in prog.sql_tables:
+            graph.add_node(tbl.name, NodeType.table, key=f"table:{tbl.name}")
+            graph.add_edge(name, f"table:{tbl.name}", EdgeType.sql, source_path=rel, line=tbl.line)
 
     for name, pliprog in pli_links:
         rel = pliprog.source_path

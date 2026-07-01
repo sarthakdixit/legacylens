@@ -71,6 +71,28 @@ ecosystem has no "DVWA for COBOL"). Security detection is therefore validated by
    (`VULN.cbl`, `VULNJOB.jcl`) covering CWE-798, CWE-89, CWE-532, and CWE-94, asserted
    by [tests/test_security.py](../tests/test_security.py).
 
+## EXEC CICS / EXEC SQL support
+
+Multi-repo testing revealed that CICS programs transfer control via
+`EXEC CICS LINK/XCTL PROGRAM(...)` rather than COBOL `CALL`, and reach data via
+`EXEC SQL` — neither of which the parser originally recognized, so the dependency
+graph for CICS/DB2 applications was materially incomplete. The COBOL parser now
+extracts both. Re-validated on **IBM/Bank-of-Z** (a CICS/DB2 app):
+
+| Edge type | Before | After |
+|---|---|---|
+| `cics` (LINK/XCTL program transfer) | 0 | **140** |
+| `sql` (program → DB2 table) | 0 | **52** (across 5 table nodes) |
+| total graph edges | 238 | **430** |
+
+CICS transfers participate in cycle and orphan analysis (a CICS-linked program is
+not an orphan); SQL table access is a data dependency and is excluded from cycles.
+Host variables (`:WS-VAR`) are not mistaken for tables.
+
+> Note: EXEC CICS/SQL extraction is implemented in the default **regex** backend.
+> The optional ANTLR backend does not yet recognize EXEC blocks (a grammar
+> enhancement) — another reason regex remains the default.
+
 ## ANTLR parser backend validation
 
 The optional ANTLR COBOL backend (`parser.backend: antlr`) was generated

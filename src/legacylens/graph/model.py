@@ -18,6 +18,7 @@ class NodeType(str, enum.Enum):
     copybook = "copybook"
     job = "job"
     dataset = "dataset"
+    table = "table"  # DB2/SQL table referenced via EXEC SQL
     external = "external"  # referenced but no source found
 
 
@@ -27,13 +28,16 @@ class EdgeType(str, enum.Enum):
     copy = "copy"
     exec = "exec"
     dd = "dd"
+    cics = "cics"  # EXEC CICS LINK/XCTL program transfer
+    sql = "sql"  # EXEC SQL table access
 
 
-# Edge kinds that can form a genuine dependency cycle: program↔program (CALL) and
-# program↔copybook (COPY) recursion. EXEC (job→program) and DD (job→dataset) are
-# excluded — jobs are only edge sources, so a job named like the program it runs
-# (very common) must not register as a self-cycle.
-_DEPENDENCY_EDGES = {EdgeType.call, EdgeType.copy}
+# Edge kinds that can form a genuine dependency cycle: program↔program control
+# transfers (CALL, CICS LINK/XCTL) and program↔copybook (COPY) recursion. EXEC
+# (job→program), DD (job→dataset), and SQL (program→table, a data dependency) are
+# excluded — the first two because jobs are only edge sources (a job named like the
+# program it runs is common), SQL because table access is not a control cycle.
+_DEPENDENCY_EDGES = {EdgeType.call, EdgeType.copy, EdgeType.cics}
 
 
 @dataclass
@@ -151,7 +155,7 @@ class DependencyGraph:
     def orphans(self) -> list[str]:
         """Defined programs with no incoming references (not called, not EXEC'd).
         Jobs are entry points and excluded."""
-        incoming = self.incoming_counts({EdgeType.call, EdgeType.exec})
+        incoming = self.incoming_counts({EdgeType.call, EdgeType.exec, EdgeType.cics})
         return sorted(
             n.name
             for n in self.nodes.values()

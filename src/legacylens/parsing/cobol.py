@@ -24,6 +24,7 @@ from .model import (
     Paragraph,
     ParseResult,
     Section,
+    SqlTableRef,
 )
 
 log = get_logger()
@@ -43,6 +44,59 @@ _PIC_RE = re.compile(r"\bPIC(?:TURE)?\s+(?:IS\s+)?([^\s.]+)", re.I)
 
 # Tokens that look like a paragraph (single word + period) but are really verbs.
 _PARAGRAPH_FALSE_POSITIVES = {"STOP", "EXIT", "CONTINUE", "GOBACK", "END-IF", "END-PERFORM"}
+
+# Embedded EXEC CICS / EXEC SQL blocks (may span lines until END-EXEC).
+_EXEC_START = re.compile(r"(?<![A-Z0-9-])EXEC\s+(CICS|SQL)\b", re.I)
+_END_EXEC = re.compile(r"\bEND-EXEC\b", re.I)
+_CICS_XFER = re.compile(r"\b(LINK|XCTL)\b", re.I)
+_CICS_PROGRAM = re.compile(r"PROGRAM\s*\(\s*(?:'([^']+)'|([A-Z0-9$#@][A-Z0-9$#@-]*))", re.I)
+_SQL_INSERT = re.compile(r"\bINSERT\s+INTO\s+([A-Z0-9_][A-Z0-9_.$#@-]*)", re.I)
+_SQL_UPDATE = re.compile(r"\bUPDATE\s+([A-Z0-9_][A-Z0-9_.$#@-]*)", re.I)
+_SQL_JOIN = re.compile(r"\bJOIN\s+([A-Z0-9_][A-Z0-9_.$#@-]*)", re.I)
+_SQL_FROM = re.compile(r"\bFROM\s+([A-Z0-9_][A-Z0-9_.$#@-]*)", re.I)
+_SQL_STOPWORDS = {"WHERE", "SET", "VALUES", "ORDER", "GROUP", "FETCH", "FOR"}
+
+
+def _parse_exec_block(kind: str, text: str, start_line: int, program: CobolProgram) -> None:
+    """Extract program transfers (CICS LINK/XCTL) or table refs (SQL) from a block."""
+    if kind.upper() == "CICS":
+        xfer = _CICS_XFER.search(text)
+        if not xfer:
+            return
+        mechanism = "CICS-" + xfer.group(1).upper()
+        pm = _CICS_PROGRAM.search(text)
+        if not pm:
+            return
+        literal, variable = pm.group(1), pm.group(2)
+        if literal:
+            program.calls.append(
+                CallStatement(target=literal.upper(), line=start_line, dynamic=False, mechanism=mechanism)
+            )
+        elif variable:
+            program.calls.append(
+                CallStatement(target=variable.upper(), line=start_line, dynamic=True, mechanism=mechanism)
+            )
+        return
+
+    # SQL: collect table references per operation.
+    seen: set[tuple[str, str]] = set()
+
+    def _add(name: str, op: str) -> None:
+        n = name.upper()
+        if n.startswith(":") or n in _SQL_STOPWORDS:
+            return
+        if (n, op) not in seen:
+            seen.add((n, op))
+            program.sql_tables.append(SqlTableRef(name=n, line=start_line, op=op))
+
+    for m in _SQL_INSERT.finditer(text):
+        _add(m.group(1), "INSERT")
+    for m in _SQL_UPDATE.finditer(text):
+        _add(m.group(1), "UPDATE")
+    for m in _SQL_JOIN.finditer(text):
+        _add(m.group(1), "JOIN")
+    for m in _SQL_FROM.finditer(text):
+        _add(m.group(1), "SELECT")
 
 
 def _detect_fixed_format(lines: list[str]) -> bool:
@@ -90,10 +144,27 @@ class CobolParser:
         warnings: list[str] = []
         current_division: str | None = None
         current_section: str | None = None
+        exec_state: dict | None = None  # active EXEC CICS/SQL block being accumulated
 
         for idx, raw in enumerate(raw_lines, start=1):
             code = _normalize(raw, fixed)
             if code is None:
+                continue
+
+            # Accumulate an in-progress EXEC block until END-EXEC, then parse it.
+            if exec_state is not None:
+                exec_state["text"] += " " + code
+                if _END_EXEC.search(code):
+                    _parse_exec_block(exec_state["kind"], exec_state["text"], exec_state["start"], program)
+                    exec_state = None
+                continue
+
+            exec_m = _EXEC_START.search(code)
+            if exec_m and "'" not in code[: exec_m.start()]:
+                if _END_EXEC.search(code):
+                    _parse_exec_block(exec_m.group(1), code, idx, program)
+                else:
+                    exec_state = {"kind": exec_m.group(1), "text": code, "start": idx}
                 continue
 
             div = _DIVISION_RE.match(code)
