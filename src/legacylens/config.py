@@ -143,6 +143,9 @@ class ParserConfig(StrictModel):
     fallback_to_regex: bool = True
     # Cache parse results in the index (content-addressed) for incremental reuse.
     cache: bool = True
+    # Worker processes for parallel parse pre-warming (1 = serial). The CLI -j
+    # flag overrides this.
+    workers: int = Field(default=1, ge=1)
 
 
 class AnalysisConfig(StrictModel):

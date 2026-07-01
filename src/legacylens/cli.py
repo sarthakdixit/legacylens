@@ -100,6 +100,7 @@ parser:
   backend: regex
   fallback_to_regex: true
   cache: true            # cache parse results in the index for incremental reuse
+  workers: 1             # >1 enables parallel parse pre-warming (or use -j on the CLI)
 
 index:
   path: .legacylens/index.db
@@ -166,6 +167,25 @@ def _cobol_parser(config: Config, gateway=None, store=None):
 
         return CachingCobolParser(base, store, backend=config.parser.backend.value)
     return base
+
+
+def _prewarm(config: Config, store, jobs: int | None) -> None:
+    """Parallel-parse cache-miss COBOL artifacts to warm the cache before the run."""
+    workers = jobs if jobs else config.parser.workers
+    if not config.parser.cache or workers <= 1:
+        return
+    from .parsing.parallel import prewarm_parse_cache
+
+    stats = prewarm_parse_cache(
+        store, store.list_artifacts("cobol"), config.parser.backend.value, workers
+    )
+    if stats.parsed:
+        get_logger().info(
+            "Parallel pre-parse: %s artifact(s) across %s workers (%s cached).",
+            stats.parsed,
+            workers,
+            stats.cached,
+        )
 
 
 def _context_provider(config: Config, gateway, store, no_rag: bool):
@@ -277,8 +297,9 @@ def index(ctx: Context) -> None:
 )
 @click.option("--new-only", is_flag=True, help="With --fail-on, gate only on findings new vs the baseline.")
 @click.option("--no-rag", is_flag=True, help="Disable retrieval-augmented LLM context even if embeddings exist.")
+@click.option("-j", "--jobs", type=int, default=None, help="Worker processes for parallel parsing (overrides config).")
 @pass_ctx
-def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool, no_rag: bool) -> None:
+def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool, no_rag: bool, jobs: int | None) -> None:
     """Parse sources and run security/compliance analysis."""
     log = get_logger()
     config = ctx.config
@@ -288,6 +309,7 @@ def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool, no_
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
     parser = _cobol_parser(config, gateway, store=store)
+    _prewarm(config, store, jobs)
     try:
         artifacts = store.list_artifacts("cobol")
         totals = {
@@ -452,8 +474,9 @@ _GRAPH_EMITTERS = {
 
 
 @cli.command()
+@click.option("-j", "--jobs", type=int, default=None, help="Worker processes for parallel parsing (overrides config).")
 @pass_ctx
-def graph(ctx: Context) -> None:
+def graph(ctx: Context, jobs: int | None) -> None:
     """Build and emit the dependency graph."""
     log = get_logger()
     config = ctx.config
@@ -462,6 +485,7 @@ def graph(ctx: Context) -> None:
 
     store = IndexStore(config.index.path)
     try:
+        _prewarm(config, store, jobs)
         dep_graph = build_graph(store, _cobol_parser(config, store=store))
     finally:
         store.close()
@@ -516,8 +540,9 @@ def _doc_filename(name: str) -> str:
 @cli.command()
 @click.option("--no-llm", is_flag=True, help="Disable LLM prose; emit structural docs only.")
 @click.option("--no-rag", is_flag=True, help="Disable retrieval-augmented context even if embeddings exist.")
+@click.option("-j", "--jobs", type=int, default=None, help="Worker processes for parallel parsing (overrides config).")
 @pass_ctx
-def doc(ctx: Context, no_llm: bool, no_rag: bool) -> None:
+def doc(ctx: Context, no_llm: bool, no_rag: bool, jobs: int | None) -> None:
     """Generate modern documentation from analysis results."""
     log = get_logger()
     config = ctx.config
@@ -527,6 +552,7 @@ def doc(ctx: Context, no_llm: bool, no_rag: bool) -> None:
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
     parser = _cobol_parser(config, gateway, store=store)
+    _prewarm(config, store, jobs)
 
     # Retrieval-augment LLM prose with related artifacts when embeddings are available.
     context_provider = _context_provider(config, gateway, store, no_rag)

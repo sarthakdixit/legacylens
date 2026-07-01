@@ -51,7 +51,9 @@ calls; `budget.max_tokens` in config caps total LLM spend per run.
 
 Parse results are cached in the index (content-addressed), so unchanged files are
 parsed once and reused across passes, commands, and runs — incremental by default
-(`parser.cache: true`).
+(`parser.cache: true`). For large estates, parse in parallel with `-j <workers>` (or
+`parser.workers`): cache-miss files are grammar-parsed across a process pool to warm
+the cache before analysis.
 
 ## Configuration
 

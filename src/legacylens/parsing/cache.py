@@ -11,11 +11,17 @@ from __future__ import annotations
 
 import hashlib
 
-from .model import ParseResult
 from .serialize import parseresult_from_dict, parseresult_to_dict
 
 # Bump when the parsers' output shape/semantics change, to invalidate stale entries.
 PARSE_CACHE_VERSION = "1"
+
+
+def parse_cache_key(backend: str, kind: str | None, text: str) -> str:
+    """Content-addressed cache key shared by the caching parser and the parallel
+    pre-warm pass, so both look up/store under identical keys."""
+    digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
+    return f"{PARSE_CACHE_VERSION}:{backend}:{kind or ''}:{digest}"
 
 
 class CachingCobolParser:
@@ -33,8 +39,7 @@ class CachingCobolParser:
         return getattr(self._base, "gateway", None)
 
     def _key(self, text: str, kind: str | None) -> str:
-        digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
-        return f"{PARSE_CACHE_VERSION}:{self._backend}:{kind or ''}:{digest}"
+        return parse_cache_key(self._backend, kind, text)
 
     def parse(self, text: str, source_path: str | None = None, kind: str | None = None) -> ParseResult:
         if not self._use_cache:
