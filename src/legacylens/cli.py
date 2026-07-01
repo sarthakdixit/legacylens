@@ -623,8 +623,9 @@ def report(ctx: Context) -> None:
         store.close()
 
     if not finding_dicts:
-        log.warning("No findings stored. Run `legacylens analyze` first.")
-        return
+        # Still emit valid (empty) reports so CI always has an artifact for a clean
+        # scan. (An empty table also confirms analysis ran with no findings.)
+        log.info("No findings — emitting empty report(s).")
 
     findings = [Finding.from_dict(d) for d in finding_dicts]
 

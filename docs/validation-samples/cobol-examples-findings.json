@@ -1,0 +1,80 @@
+{
+  "summary": {
+    "total": 3,
+    "by_severity": {
+      "high": 1,
+      "medium": 2
+    },
+    "by_source": {
+      "rule": 3
+    },
+    "requires_human_review": 0,
+    "suppressed": 0
+  },
+  "findings": [
+    {
+      "rule_id": "LL-SEC-001",
+      "title": "Hard-coded credential or secret",
+      "severity": "high",
+      "rel_path": "accept/accept-secure.cbl",
+      "line": 19,
+      "evidence": "display \"You entered: \" at 0204 ws-password at 0217",
+      "rationale": "A secret-bearing field is assigned a literal value in source.",
+      "remediation": "Move secrets to an external secret store / parameter; never embed in source.",
+      "confidence": 0.85,
+      "source": "rule",
+      "requires_human_review": false,
+      "cwe": "CWE-798",
+      "owasp": "A07:2021",
+      "suppressed": false,
+      "controls": [
+        "NIST-800-53:IA-5",
+        "PCI-DSS:8.6.2"
+      ],
+      "fingerprint": "eade745796d8c046"
+    },
+    {
+      "rule_id": "LL-SEC-004",
+      "title": "Sensitive data written to log/output",
+      "severity": "medium",
+      "rel_path": "accept/accept-secure.cbl",
+      "line": 19,
+      "evidence": "display \"You entered: \" at 0204 ws-password at 0217",
+      "rationale": "A DISPLAY statement references a sensitive field, risking exposure in logs/SYSOUT.",
+      "remediation": "Mask or remove sensitive values before DISPLAY; avoid logging secrets/PII.",
+      "confidence": 0.7,
+      "source": "rule",
+      "requires_human_review": false,
+      "cwe": "CWE-532",
+      "owasp": "A09:2021",
+      "suppressed": false,
+      "controls": [
+        "NIST-800-53:AU-9",
+        "NIST-800-53:SI-11",
+        "PCI-DSS:10.2.1",
+        "PCI-DSS:3.3.1"
+      ],
+      "fingerprint": "fc336e7751e8f04c"
+    },
+    {
+      "rule_id": "LL-SEC-008",
+      "title": "EVALUATE without WHEN OTHER (missing default case)",
+      "severity": "medium",
+      "rel_path": "mouse/mouse_example.cbl",
+      "line": 103,
+      "evidence": "EVALUATE ... END-EVALUATE with no WHEN OTHER branch",
+      "rationale": "Unhandled values fall through silently, which can mask errors or produce incorrect results.",
+      "remediation": "Add a WHEN OTHER branch to handle unexpected values explicitly.",
+      "confidence": 0.7,
+      "source": "rule",
+      "requires_human_review": false,
+      "cwe": "CWE-478",
+      "owasp": null,
+      "suppressed": false,
+      "controls": [
+        "NIST-800-53:SI-10"
+      ],
+      "fingerprint": "e5260726f704cc77"
+    }
+  ]
+}

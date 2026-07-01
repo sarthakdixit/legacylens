@@ -71,6 +71,38 @@ ecosystem has no "DVWA for COBOL"). Security detection is therefore validated by
    (`VULN.cbl`, `VULNJOB.jcl`) covering CWE-798, CWE-89, CWE-532, and CWE-94, asserted
    by [tests/test_security.py](../tests/test_security.py).
 
+## Round 2 — additional public repositories
+
+A second, independent set of public repos, run through the full pipeline with the
+newer features enabled (parallel parsing `-j 4`, compliance frameworks
+`[pci-dss, nist-800-53]`, parse cache). All ran end-to-end with no errors.
+
+| Category | Repository | Indexed | Result |
+|---|---|---|---|
+| COBOL | [shamrice/COBOL-Examples](https://github.com/shamrice/COBOL-Examples) | 24 COBOL | ✅ 3 findings (1 high, 2 medium), all mapped to PCI-DSS + NIST controls |
+| COBOL/CICS | [Nantero1/zBANK](https://github.com/Nantero1/zBANK) | 7 COBOL (VSAM/CICS) | ✅ 0 findings; parsed cleanly (see notes) |
+| COBOL/JCL | [IBM/cobol-is-fun](https://github.com/IBM/cobol-is-fun) | 3 COBOL, 6 JCL | ✅ JCL 6 jobs / 10 steps; 0 findings |
+
+**Control-mapped findings (COBOL-Examples)** — sample committed at
+[docs/validation-samples/cobol-examples-findings.json](validation-samples/cobol-examples-findings.json):
+
+| Finding | CWE | Controls |
+|---|---|---|
+| Hard-coded credential (`accept-secure.cbl:19`) | CWE-798 | `PCI-DSS:8.6.2`, `NIST-800-53:IA-5` |
+| Sensitive data to output (`accept-secure.cbl:19`) | CWE-532 | `PCI-DSS:3.3.1`, `PCI-DSS:10.2.1`, `NIST-800-53:AU-9`, `NIST-800-53:SI-11` |
+| EVALUATE without WHEN OTHER (`mouse_example.cbl:103`) | CWE-478 | `NIST-800-53:SI-10` |
+
+**Robustness notes (no crashes):**
+
+- `zBANK` includes a program whose `PROCEDURE DIVISION` has **no named paragraphs**
+  (inline `PERFORM` flow) — correctly reported as 0 paragraphs, not an error.
+- `zBANK` also ships some **JCL content in `.cbl`-named files**; the classifier is
+  extension-first and parses them as COBOL without failing (a content/extension
+  mismatch is the repo's, and is handled gracefully).
+- Parallel pre-parse warmed the cache (COBOL-Examples: 24/24 across 4 workers).
+- `report` now emits valid **empty** SARIF/JSON/HTML for a clean scan, so CI always
+  has an artifact.
+
 ## EXEC CICS / EXEC SQL support
 
 Multi-repo testing revealed that CICS programs transfer control via

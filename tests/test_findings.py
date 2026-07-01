@@ -150,6 +150,30 @@ def test_baseline_makes_findings_not_new():
         assert main(["analyze", "--no-llm", "--fail-on", "high"]) == 6
 
 
+def test_report_emits_empty_artifacts_for_clean_scan():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("audit.yaml").write_text(
+            _CONFIG + "output:\n  formats: [sarif, json]\n  dir: out\n", encoding="utf-8"
+        )
+        Path("src").mkdir()
+        Path("src/CLEAN.cbl").write_text(
+            "       IDENTIFICATION DIVISION.\n"
+            "       PROGRAM-ID. CLEAN.\n"
+            "       PROCEDURE DIVISION.\n"
+            "       MAIN.\n"
+            "           DISPLAY 'HELLO'.\n"
+            "           GOBACK.\n",
+            encoding="utf-8",
+        )
+        assert main(["index"]) == 0
+        assert main(["analyze", "--no-llm"]) == 0
+        assert main(["report"]) == 0
+        # CI always gets an artifact, even with zero findings.
+        assert json.loads(Path("out/findings.json").read_text())["summary"]["total"] == 0
+        assert Path("out/sarif.json").exists()
+
+
 def test_json_output_includes_fingerprint():
     runner = CliRunner()
     with runner.isolated_filesystem():
