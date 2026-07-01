@@ -30,7 +30,7 @@ from .graph import build_graph, to_dot, to_graphml, to_mermaid
 from .ingest import Indexer
 from .llm import build_gateway
 from .logging_setup import get_logger, setup_logging
-from .parsing import CobolParser, JclParser, PliParser
+from .parsing import JclParser, PliParser, build_cobol_parser
 from .retrieval import Retriever
 from .security import Finding, SecurityAnalyzer, to_html, to_json, to_sarif
 from .security.emit import summarize
@@ -78,6 +78,12 @@ analysis:
       - cwe
       - owasp
 
+# COBOL parser backend: "regex" (default, zero-dependency) or "antlr" (grammar-based;
+# requires a one-time `python scripts/build_antlr.py` build + the `antlr` extra).
+parser:
+  backend: regex
+  fallback_to_regex: true
+
 index:
   path: .legacylens/index.db
 
@@ -118,6 +124,15 @@ class Context:
 
 
 pass_ctx = click.make_pass_decorator(Context)
+
+
+def _cobol_parser(config: Config, gateway=None):
+    """Build the COBOL parser for the client-selected backend (regex/antlr)."""
+    return build_cobol_parser(
+        config.parser.backend.value,
+        gateway=gateway,
+        fallback_to_regex=config.parser.fallback_to_regex,
+    )
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -217,7 +232,7 @@ def analyze(ctx: Context, no_llm: bool) -> None:
 
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
-    parser = CobolParser(gateway=gateway)
+    parser = _cobol_parser(config, gateway)
     try:
         artifacts = store.list_artifacts("cobol")
         totals = {
@@ -351,7 +366,7 @@ def graph(ctx: Context) -> None:
 
     store = IndexStore(config.index.path)
     try:
-        dep_graph = build_graph(store, CobolParser())
+        dep_graph = build_graph(store, _cobol_parser(config))
     finally:
         store.close()
 
@@ -414,7 +429,7 @@ def doc(ctx: Context, no_llm: bool) -> None:
 
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
-    parser = CobolParser(gateway=gateway)
+    parser = _cobol_parser(config, gateway)
     generator = DocGenerator(gateway=gateway)
     docs_dir = config.output.dir / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)

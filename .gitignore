@@ -18,6 +18,9 @@ env/
 .legacylens/
 legacylens-out/
 
+# Generated ANTLR parser (built locally via scripts/build_antlr.py)
+src/legacylens/parsing/antlr/_generated/
+
 # OS / editor
 .DS_Store
 Thumbs.db

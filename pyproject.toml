@@ -29,6 +29,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# ANTLR COBOL parser backend (opt-in). Runtime only; generating the parser is a
+# separate build step (see scripts/build_antlr.py).
+antlr = ["antlr4-python3-runtime>=4.13"]
 
 [project.urls]
 Homepage = "https://github.com/your-org/legacylens"

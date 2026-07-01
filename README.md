@@ -65,6 +65,30 @@ Key principles:
 pytest                          # run the test suite
 ```
 
+## COBOL parser backend (client choice)
+
+The COBOL parser backend is selectable in config under `parser.backend`:
+
+- **`regex`** (default) — pure-Python, zero-dependency line parser. Works everywhere,
+  installs air-gapped with no extra steps.
+- **`antlr`** (opt-in) — grammar-based parser using ANTLR, for higher fidelity (the
+  lexer understands string literals and tokens natively). It requires:
+  1. the runtime extra: `pip install 'legacylens[antlr]'`, and
+  2. a one-time parser generation: `python scripts/build_antlr.py` (needs Java at
+     build time only; see the script header).
+
+```yaml
+parser:
+  backend: antlr          # or: regex
+  fallback_to_regex: true # if antlr isn't generated/installed, use regex instead of failing
+```
+
+With `fallback_to_regex: true` (default), selecting `antlr` before generating it
+simply logs a warning and uses the regex backend — runs never break. The ANTLR
+grammar (`src/legacylens/parsing/antlr/Cobol.g4`) is a starter covering the
+structural constructs legacylens needs; clients can extend it or substitute a mature
+grammar (e.g. ProLeap's).
+
 ## Validation
 
 Beyond the unit suite, `legacylens` has been run end-to-end against public COBOL,

@@ -9,6 +9,7 @@ silently becomes authoritative.
 """
 
 from .cobol import CobolParser
+from .factory import build_cobol_parser
 from .jcl import JclDD, JclJob, JclParser, JclStep
 from .model import (
     CallStatement,
@@ -23,6 +24,7 @@ from .pli import PliParser, PliProcedure, PliProgram
 
 __all__ = [
     "CobolParser",
+    "build_cobol_parser",
     "ParseResult",
     "CobolProgram",
     "Paragraph",

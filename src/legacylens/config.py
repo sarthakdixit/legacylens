@@ -121,6 +121,20 @@ class ComplianceConfig(StrictModel):
     rule_packs: list[str] = Field(default_factory=lambda: ["cwe", "owasp"])
 
 
+class ParserBackend(str, enum.Enum):
+    """Which COBOL parsing backend to use."""
+
+    regex = "regex"  # pure-Python, zero-dependency (default)
+    antlr = "antlr"  # ANTLR grammar-based (higher fidelity; requires a build step)
+
+
+class ParserConfig(StrictModel):
+    backend: ParserBackend = ParserBackend.regex
+    # If the selected backend is unavailable (e.g. the ANTLR parser has not been
+    # generated), fall back to the regex parser instead of failing.
+    fallback_to_regex: bool = True
+
+
 class AnalysisConfig(StrictModel):
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)
 
@@ -153,6 +167,7 @@ class Config(StrictModel):
     exclude: list[str] = Field(default_factory=list)
     llm: LLMConfig
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
+    parser: ParserConfig = Field(default_factory=ParserConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
