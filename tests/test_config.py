@@ -97,3 +97,15 @@ def test_no_languages_rejected(tmp_path):
     bad = VALID.replace("languages:\n  - cobol\n  - jcl\n", "languages: []\n")
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, bad))
+
+
+def test_example_config_is_valid():
+    # The shipped reference config must always load against the current schema.
+    from pathlib import Path
+
+    from legacylens.config import Config
+
+    example = Path(__file__).resolve().parents[1] / "examples" / "audit.example.yaml"
+    cfg = load_config(example)
+    assert isinstance(cfg, Config)
+    assert cfg.llm.routing.default in cfg.llm.provider_names()

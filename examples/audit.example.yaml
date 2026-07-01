@@ -1,0 +1,124 @@
+# ==========================================================================
+# legacylens — reference configuration
+# Copy to `audit.yaml`, keep ONE provider under llm.providers, point
+# llm.routing.default at it, and export the matching API key env var.
+#
+# KEYS ARE NEVER STORED HERE. Each provider names an `api_key_env` — the
+# environment variable legacylens reads the key from at run time.
+#   PowerShell:  $env:OPENAI_API_KEY = "sk-..."      (or: setx NAME "value")
+#   bash:        export OPENAI_API_KEY="sk-..."
+# ==========================================================================
+
+version: 1
+
+project:
+  name: my-legacy-system
+  root: ./src                 # directory to analyze
+
+languages: [cobol, jcl, pli]  # enable the ones present in your estate
+
+exclude:
+  - "**/test/**"
+
+# --------------------------------------------------------------------------
+# LLM — bring your own. Keep ONE provider active; the others are examples.
+# `type` is one of: local | openai_compatible | anthropic
+# --------------------------------------------------------------------------
+llm:
+  providers:
+    # -- Local model (Ollama / vLLM / llama.cpp) — no key, fully offline ----
+    - name: local
+      type: local
+      base_url: http://localhost:11434/v1     # Ollama default; vLLM: :8000/v1
+      model: qwen2.5-coder:32b
+      # api_key_env: LEGACYLENS_LOCAL_KEY      # only if your server needs one
+
+    # -- OpenAI ------------------------------------------------------------
+    # - name: openai
+    #   type: openai_compatible
+    #   base_url: https://api.openai.com/v1
+    #   model: gpt-4o-mini                     # or gpt-4o
+    #   api_key_env: OPENAI_API_KEY
+
+    # -- Anthropic (Claude) ------------------------------------------------
+    # - name: anthropic
+    #   type: anthropic
+    #   base_url: https://api.anthropic.com    # optional (this is the default)
+    #   model: claude-sonnet-4-6               # use your account's current model id
+    #   api_key_env: ANTHROPIC_API_KEY
+
+    # -- Google Gemini (via its OpenAI-compatible endpoint) ----------------
+    # - name: gemini
+    #   type: openai_compatible
+    #   base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    #   model: gemini-2.0-flash                # or gemini-1.5-flash
+    #   api_key_env: GEMINI_API_KEY
+
+    # -- Any other OpenAI-compatible endpoint (Together, Groq, OpenRouter,
+    #    LiteLLM/gateway, self-hosted, etc.) -------------------------------
+    # - name: gateway
+    #   type: openai_compatible
+    #   base_url: https://your-endpoint/v1
+    #   model: your-model-id
+    #   api_key_env: YOUR_API_KEY_ENV
+
+  # Which provider serves each task (falls back to `default` when unset).
+  routing:
+    default: local
+    # parse_fallback: local     # recover structure the grammar can't parse
+    # security: anthropic       # e.g. route security to a stronger model
+    # documentation: gemini
+
+  # Optional — enables `embed` / `search` and retrieval-augmented docs+security.
+  # The provider name must match one above; use that provider's embedding model.
+  # embeddings:
+  #   provider: gemini
+  #   model: text-embedding-004        # OpenAI: text-embedding-3-small; Ollama: nomic-embed-text
+
+# --------------------------------------------------------------------------
+# Analysis: rule packs + regulatory compliance
+# --------------------------------------------------------------------------
+analysis:
+  compliance:
+    rule_packs: [cwe, owasp]           # + names of any custom packs below
+    frameworks: []                     # built-in: pci-dss, nist-800-53
+    # pack_paths: [rules/acme.yaml]           # custom detection rules (see docs/RULES.md)
+    # framework_paths: [frameworks/acme.yaml] # custom CWE->control mappings
+
+# --------------------------------------------------------------------------
+# Parser
+# --------------------------------------------------------------------------
+parser:
+  backend: regex            # or "antlr" (needs scripts/build_antlr.py + [antlr] extra)
+  fallback_to_regex: true
+  cache: true               # incremental parse cache in the index
+  workers: 1                # >1 = parallel parse pre-warming (or use CLI -j)
+
+index:
+  path: .legacylens/index.db
+
+output:
+  # Emit whichever you want; each command uses the ones it supports:
+  #   report -> sarif, json, html   |  graph -> mermaid, dot, graphml  |  doc -> markdown
+  formats: [sarif, json, html, mermaid, markdown]
+  dir: legacylens-out
+
+# --------------------------------------------------------------------------
+# Findings lifecycle (suppression / baseline / CI gate)
+# --------------------------------------------------------------------------
+findings:
+  baseline_path: .legacylens/baseline.json
+  suppressions_path: .legacylens/suppressions.json
+  fail_on: null             # e.g. "high" — or use `analyze --fail-on high`
+
+# Hard ceiling on total LLM tokens per run (null = unlimited).
+budget:
+  max_tokens: null
+
+audit:
+  log_path: .legacylens/audit.log
+
+# Refuse any network endpoint not listed under llm.providers above. Keep true
+# for on-prem/air-gapped use; note that a cloud provider means code leaves your
+# environment even with this on (the cloud host is an allowed endpoint).
+air_gapped: true
