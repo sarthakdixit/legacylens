@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "legacylens"
-version = "0.0.1"
+version = "0.1.0"
 description = "Security- and compliance-first CLI for AI-assisted legacy code analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 keywords = ["legacy", "cobol", "mainframe", "security", "compliance", "audit", "static-analysis"]
 authors = [{ name = "legacylens contributors" }]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",

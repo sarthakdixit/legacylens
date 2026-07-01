@@ -61,6 +61,17 @@ your Python **Scripts** directory isn't on PATH — either use `pipx` (above), r
 `py -m legacylens ...`, or add `...\PythonXX\Scripts` to PATH. `pipx` avoids this
 entirely.
 
+### Air-gapped / offline install
+
+Build a self-contained wheel bundle on a networked machine, copy it to the
+air-gapped host, and install with **no network**:
+
+```bash
+bash scripts/build_offline_bundle.sh      # Windows: scripts\build_offline_bundle.ps1
+# copy dist/wheelhouse/ to the target host, then:
+pip install --no-index --find-links wheelhouse legacylens
+```
+
 ### Development (editable, with tests)
 
 ```bash
