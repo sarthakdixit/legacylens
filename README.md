@@ -2,283 +2,88 @@
 
 > Security- and compliance-first CLI for AI-assisted legacy code analysis.
 
-`legacylens` ingests legacy/mainframe codebases and produces three co-equal outputs:
+`legacylens` analyzes legacy/mainframe codebases (COBOL, JCL, PL/I) and produces
+three co-equal outputs:
 
-- **Dependency graphs** — call/data/include relationships across artifacts.
-- **Security & compliance findings** — mapped to **CWE / OWASP** (extensible rule packs; see [docs/RULES.md](docs/RULES.md)).
+- **Dependency graphs** — call / copy / EXEC / CICS / SQL relationships across artifacts.
+- **Security & compliance findings** — CWE/OWASP, mapped to regulatory controls
+  (PCI-DSS, NIST). SARIF / JSON / HTML.
 - **Modern documentation** — human-readable explanations of legacy logic.
 
-It is built to run **on-prem / air-gapped** with **bring-your-own LLM** — point it at
-your own self-hosted models or your own LLM API keys. No source code or telemetry
-leaves your environment.
+Runs **on-prem / air-gapped** with **bring-your-own LLM** — your own local models or
+API keys. No source or telemetry leaves your environment; the LLM is optional.
 
-> **Status:** v1 feature-complete across batches B0–B7 (see `REQUIREMENTS.md`):
-> scaffold, BYO-LLM gateway, ingestion/index, COBOL/JCL/PL-I parsing, dependency
-> graph, CWE/OWASP security analysis, documentation, retrieval, and cost controls.
-
-## Installation
-
-`legacylens` installs a single CLI command that works from **cmd, PowerShell, or any
-terminal** on Windows, macOS, and Linux.
-
-### Recommended — `pipx` (puts `legacylens` on PATH for every shell, all OSes)
+## Install
 
 ```bash
-python -m pip install --user pipx
-python -m pipx ensurepath          # one-time: adds the CLI dir to PATH
-pipx install legacylens            # from PyPI  (or:  pipx install .  from a clone)
-```
-
-Or use the bundled helper from a clone:
-
-```bash
-# Windows (PowerShell):
-powershell -ExecutionPolicy Bypass -File scripts\install.ps1
-# macOS / Linux:
-bash scripts/install.sh
-```
-
-**Open a new terminal** afterwards (so PATH refreshes), then:
-
-```bash
+pipx install legacylens        # recommended (puts `legacylens` on PATH, all OSes)
+# or:  pip install legacylens
 legacylens --help
-legacylens doctor          # report Python + dependency status
 ```
 
-On first run, legacylens verifies its required libraries are present; if any are
-missing (e.g. running from a clone without installing), it asks permission and
-installs them with pip (or set `LEGACYLENS_AUTO_INSTALL=1` to consent
-non-interactively). `legacylens doctor` shows the same status on demand.
-
-### Alternative — `pip`
-
-```bash
-pip install legacylens             # or:  pip install .   from a clone
-```
-
-This also creates the `legacylens` command. On Windows, if the shell can't find it,
-your Python **Scripts** directory isn't on PATH — either use `pipx` (above), run
-`py -m legacylens ...`, or add `...\PythonXX\Scripts` to PATH. `pipx` avoids this
-entirely.
-
-### Air-gapped / offline install
-
-Build a self-contained wheel bundle on a networked machine, copy it to the
-air-gapped host, and install with **no network**:
-
-```bash
-bash scripts/build_offline_bundle.sh      # Windows: scripts\build_offline_bundle.ps1
-# copy dist/wheelhouse/ to the target host, then:
-pip install --no-index --find-links wheelhouse legacylens
-```
-
-### Development (editable, with tests)
-
-```bash
-python -m venv .venv
-. .venv/Scripts/activate        # Windows
-# source .venv/bin/activate     # Linux/macOS
-pip install -e ".[dev]"
-pytest
-```
+Air-gapped and dev installs are in [RELEASING.md](RELEASING.md) and
+[docs](docs/). On first run, legacylens offers to install any missing libraries;
+`legacylens doctor` reports environment status.
 
 ## Quick start
 
 ```bash
-legacylens init                 # scaffold an audit.yaml in the current dir
-# edit audit.yaml — set project.root, languages, and your LLM provider(s)
-legacylens index                # discover & index sources (COBOL/JCL/PL-I)
-legacylens analyze              # parse + security/compliance analysis
-legacylens graph                # emit dependency graph (DOT/Mermaid/GraphML)
-legacylens doc                  # generate documentation (Markdown + overview)
-legacylens report               # render findings (SARIF/JSON/HTML)
-legacylens embed                # build the semantic embedding index (BYO embeddings)
-legacylens search "QUERY"       # find the most relevant artifacts
+legacylens init            # scaffold audit.yaml; set project.root + languages
+legacylens index           # discover & index sources
+legacylens analyze         # parse + security/compliance findings
+legacylens graph           # dependency graph (DOT / Mermaid / GraphML)
+legacylens report          # findings as SARIF / JSON / HTML
+legacylens doc             # Markdown docs + system overview
 ```
 
-Once an embedding index is built (`legacylens embed`), the LLM steps are
-**retrieval-augmented**: `analyze` (security) and `doc` inject the most semantically
-related artifacts into their prompts for cross-file reasoning (disable with
-`--no-rag`).
+Add `--no-llm` to run fully deterministically (no model calls). `legacylens --help`
+lists every command.
 
-Run `legacylens --help` for all commands and `legacylens <cmd> --help` for details.
+## Configure your LLM (optional)
 
-Useful flags: `--no-llm` (on `analyze`/`doc`) runs fully deterministically with no model
-calls; `budget.max_tokens` in config caps total LLM spend per run.
-
-Parse results are cached in the index (content-addressed), so unchanged files are
-parsed once and reused across passes, commands, and runs — incremental by default
-(`parser.cache: true`). For large estates, parse in parallel with `-j <workers>` (or
-`parser.workers`): cache-miss files are grammar-parsed across a process pool to warm
-the cache before analysis.
-
-## Configuration
-
-All behavior is driven by a single config file (`audit.yaml` by default; override
-with `-c/--config`). Credentials are **never** stored in config — you name the
-environment variable holding each provider's key. See the file generated by
-`legacylens init` for the full, commented schema.
-
-A fully-commented reference with **every provider** (local, OpenAI, Anthropic,
-Gemini, and any OpenAI-compatible endpoint) is at
-[examples/audit.example.yaml](examples/audit.example.yaml) — copy it, keep one
-provider, point `routing.default` at it, and export that provider's API key env var.
-
-Key principles:
-
-- **Air-gapped by default** (`air_gapped: true`): the LLM gateway refuses any
-  endpoint not explicitly listed under `llm.providers`.
-- **Bring-your-own models**: OpenAI-compatible, Anthropic, or local servers
-  (Ollama / vLLM / llama.cpp), with per-task model routing.
-- **Auditable**: every run appends a structured trail to the configured audit log.
-
-### Choosing your LLM provider
-
-**Steps to enable an LLM:**
-
-1. **Create `llm_config.yaml`** next to your `audit.yaml` (copy
-   [examples/llm_config.example.yaml](examples/llm_config.example.yaml)), and make
-   sure `audit.yaml` has **no `llm:` block**.
-2. **Fill in `type`, `url`, `model`, and `key`** for your provider (table below).
-   Prefer `api_key_env: NAME` instead of `key:` to keep the key in an env var.
-3. *(Optional)* add `embedding_model:` to enable `embed`/`search` + retrieval-augmented
-   docs and security.
-4. **Run with the LLM on** — i.e. *without* `--no-llm`:
-   ```bash
-   legacylens index
-   legacylens analyze            # adds LLM advisory findings (flagged for review)
-   legacylens doc                # fills in Purpose / Business-logic prose
-   legacylens embed              # optional: build the embedding index for RAG
-   ```
-5. Everything else (parsing, graph, CWE/OWASP + regulatory findings, all output
-   formats) works the same with or without an LLM.
-
-**Easiest — a 4-line `llm_config.yaml`.** Create it next to your `audit.yaml` (and
-leave the `llm:` block out of `audit.yaml`); legacylens auto-detects it:
+Easiest: drop a **`llm_config.yaml`** next to `audit.yaml` (and omit the `llm:`
+block) — legacylens auto-detects it:
 
 ```yaml
-# llm_config.yaml   (this file is git-ignored — it may hold your key)
 type: openai_compatible
-url: https://generativelanguage.googleapis.com/v1beta/openai
+url: https://generativelanguage.googleapis.com/v1beta/openai   # Gemini shown
 model: gemini-2.0-flash
-key: PASTE_YOUR_KEY_HERE     # or use `api_key_env: GEMINI_API_KEY` to keep it in an env var
+key: PASTE_YOUR_KEY_HERE       # or `api_key_env: GEMINI_API_KEY` to read from an env var
 ```
 
-That's it — run `legacylens analyze` / `doc`. Swap `type`/`url`/`model` for any
-provider (see [examples/llm_config.example.yaml](examples/llm_config.example.yaml)).
-
-**Advanced — a full `llm:` block** (multiple providers, per-task routing). Here the
-API key is never in the config — you export it as an environment variable and name
-it via `api_key_env`. Pick one provider block for `llm.providers`, point
-`routing.default` at it, and export the key:
-
-```powershell
-# PowerShell (Windows) — this session, or `setx NAME "value"` to persist:
-$env:OPENAI_API_KEY = "sk-..."
-```
-```bash
-# bash / Linux / macOS:
-export OPENAI_API_KEY="sk-..."
-```
-
-| Provider | `type` | `base_url` | `model` (example) | key env |
-|---|---|---|---|---|
-| **Local** (Ollama / vLLM / llama.cpp) | `local` | `http://localhost:11434/v1` | `qwen2.5-coder:32b` | — (offline) |
-| **OpenAI** | `openai_compatible` | `https://api.openai.com/v1` | `gpt-4o-mini` | `OPENAI_API_KEY` |
-| **Anthropic (Claude)** | `anthropic` | `https://api.anthropic.com` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
-| **Google Gemini** | `openai_compatible` | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
-| **Any OpenAI-compatible** (Groq, Together, OpenRouter, LiteLLM…) | `openai_compatible` | your endpoint `/v1` | your model id | your env var |
-
-Example — Google Gemini (free key):
-
-```yaml
-llm:
-  providers:
-    - name: gemini
-      type: openai_compatible
-      base_url: https://generativelanguage.googleapis.com/v1beta/openai
-      model: gemini-2.0-flash
-      api_key_env: GEMINI_API_KEY      # export GEMINI_API_KEY=... ; not stored here
-  routing:
-    default: gemini
-  # optional — enables `embed`/`search` + retrieval-augmented docs & security:
-  # embeddings: { provider: gemini, model: text-embedding-004 }
-```
-
-Then run without `--no-llm` (e.g. `legacylens analyze`, `legacylens doc`) to get
-LLM-assisted findings and documentation. The full set of provider blocks is in
+Works with OpenAI, Anthropic, Gemini, local (Ollama/vLLM), or any OpenAI-compatible
+endpoint. Then run `analyze` / `doc` without `--no-llm`. Full reference:
+[examples/llm_config.example.yaml](examples/llm_config.example.yaml) and
 [examples/audit.example.yaml](examples/audit.example.yaml).
 
-> Note: a cloud provider means code leaves your environment (the cloud host is an
-> allowed endpoint even with `air_gapped: true`). For a strict on-prem engagement,
-> use a local model.
+## Key features
+
+- **Parsers** — COBOL (regex, or optional [ANTLR](docs/RULES.md) backend), JCL, PL/I;
+  `EXEC CICS` (LINK/XCTL) and `EXEC SQL` → CICS call graph + DB2 table dependencies.
+- **Findings workflow** — suppression, baseline/diff, and CI gating
+  (`analyze --fail-on high`, exit code 6). Custom rule packs + regulatory frameworks;
+  see [docs/RULES.md](docs/RULES.md).
+- **BYO-LLM gateway** — provider-agnostic, per-task routing, response cache, token
+  budget, air-gap endpoint enforcement. LLM findings/docs are advisory (flagged for
+  review) and can be retrieval-augmented (`embed` + `search`).
+- **Scale** — incremental content-addressed parse cache; parallel parsing (`-j`).
+
+All behavior is driven by one config file (`audit.yaml`); keys are never stored in
+config. Full commented schema: [examples/audit.example.yaml](examples/audit.example.yaml).
+
+## Docs
+
+- [docs/RULES.md](docs/RULES.md) — rule packs, custom packs, compliance frameworks
+- [docs/VALIDATION.md](docs/VALIDATION.md) — results on public COBOL/JCL/PL-I repos
+- [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ## Development
 
 ```bash
-pytest                          # run the test suite
+python -m venv .venv && . .venv/Scripts/activate   # or: source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
 ```
-
-## Findings lifecycle & CI gating
-
-legacylens supports a real audit/CI workflow around findings:
-
-```bash
-legacylens analyze --fail-on high      # exit 6 if any non-suppressed finding >= high
-legacylens suppress --list             # list findings with their (line-independent) fingerprints
-legacylens suppress <fingerprint> --reason "false positive"   # accept / silence one
-legacylens baseline                    # accept current findings as the baseline
-legacylens diff                        # show findings new vs resolved since the baseline
-legacylens analyze --fail-on high --new-only   # gate only on findings new vs the baseline
-```
-
-- **Suppressions** (`.legacylens/suppressions.json`) mark false positives or accepted
-  LLM-advisory findings; they're excluded from gating and shown struck-through in the
-  HTML report and marked in SARIF (`suppressions`).
-- **Baseline** (`.legacylens/baseline.json`) lets you adopt legacylens on a large
-  estate without drowning in pre-existing findings — gate only on what's *new*.
-- **Exit codes**: `6` = gate failure (distinct from tool errors), so CI can tell a
-  policy failure apart from a crash. Configure a default via `findings.fail_on`.
-
-Fingerprints are line-independent, so a finding survives edits elsewhere in the file.
-
-**Custom & regulatory compliance packs:** add your own detection rules via YAML
-(`analysis.compliance.pack_paths`) and map findings to regulatory controls with
-built-in (`pci-dss`, `nist-800-53`) or custom frameworks
-(`analysis.compliance.frameworks` / `framework_paths`). Findings carry `controls`
-(e.g. `PCI-DSS:8.6.2`) in every output, and `legacylens compliance` summarizes by
-control. See [docs/RULES.md](docs/RULES.md).
-
-## COBOL parser backend (client choice)
-
-The COBOL parser backend is selectable in config under `parser.backend`:
-
-- **`regex`** (default) — pure-Python, zero-dependency line parser. Works everywhere,
-  installs air-gapped with no extra steps.
-- **`antlr`** (opt-in) — grammar-based parser using ANTLR, for higher fidelity (the
-  lexer understands string literals and tokens natively). It requires:
-  1. the runtime extra: `pip install 'legacylens[antlr]'`, and
-  2. a one-time parser generation: `python scripts/build_antlr.py` (needs Java at
-     build time only; see the script header).
-
-```yaml
-parser:
-  backend: antlr          # or: regex
-  fallback_to_regex: true # if antlr isn't generated/installed, use regex instead of failing
-```
-
-With `fallback_to_regex: true` (default), selecting `antlr` before generating it
-simply logs a warning and uses the regex backend — runs never break. The ANTLR
-grammar (`src/legacylens/parsing/antlr/Cobol.g4`) is a starter covering the
-structural constructs legacylens needs; clients can extend it or substitute a mature
-grammar (e.g. ProLeap's).
-
-## Validation
-
-Beyond the unit suite, `legacylens` has been run end-to-end against public COBOL,
-JCL, and PL/I repositories (AWS CardDemo, IBM Bank-of-Z, and others). See
-[docs/VALIDATION.md](docs/VALIDATION.md) for the test matrix, results, and the
-issues that real-world testing surfaced and fixed.
 
 ## License
 
