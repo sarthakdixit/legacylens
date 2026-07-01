@@ -30,6 +30,7 @@ class SecurityAnalyzer:
         parser: CobolParser | None = None,
         custom_packs: dict[str, list] | None = None,
         frameworks: list[Framework] | None = None,
+        context_provider=None,
     ):
         self.rule_packs = rule_packs
         self.gateway = gateway
@@ -37,6 +38,8 @@ class SecurityAnalyzer:
         # Built-in packs merged with any client-supplied custom packs.
         self._registry = {**RULE_PACKS, **(custom_packs or {})}
         self._frameworks = frameworks or []
+        # Optional retrieval-augmentation for the LLM advisory pass.
+        self._context_provider = context_provider
 
     def analyze_estate(self, store: IndexStore) -> list[Finding]:
         findings: list[Finding] = []
@@ -81,6 +84,18 @@ class SecurityAnalyzer:
             '"remediation": str, "confidence": number between 0 and 1}. '
             "Return [] if none.\n\nSOURCE:\n" + text[:6000]
         )
+
+        # Retrieval-augmentation: add related artifacts for cross-file reasoning.
+        if self._context_provider is not None:
+            related = self._context_provider.related(
+                f"{rel_path}\n{text[:1000]}", exclude_rel=rel_path
+            )
+            if related:
+                blocks = "\n\n".join(f"--- {rp} ---\n{snip}" for rp, snip in related)
+                prompt += (
+                    "\n\nRELATED ARTIFACTS (context for cross-file reasoning; report "
+                    "issues in the SOURCE above, not these):\n" + blocks
+                )
         try:
             resp = self.gateway.complete(
                 "security", CompletionRequest(messages=[Message(role="user", content=prompt)])

@@ -94,6 +94,22 @@ def test_doc_prompt_includes_related_context(tmp_path):
     assert "_(inferred)_" in md
 
 
+def test_security_llm_prompt_includes_related_context(tmp_path):
+    from legacylens.security import SecurityAnalyzer
+
+    store = _indexed(tmp_path)
+    gw = StubGateway()
+    Retriever(store, gw).build(["cobol"])
+    cp = ContextProvider(store, gw, k=2)
+
+    analyzer = SecurityAnalyzer(["cwe"], gateway=gw, context_provider=cp)
+    analyzer.analyze_estate(store)  # runs rules + LLM advisory (stub)
+    store.close()
+    # The last security LLM prompt was augmented with related-artifact context.
+    assert gw.last_prompt is not None
+    assert "RELATED ARTIFACTS" in gw.last_prompt
+
+
 def test_doc_without_context_provider_has_no_related(tmp_path):
     store = _indexed(tmp_path)
     gw = StubGateway()

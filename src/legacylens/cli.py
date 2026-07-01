@@ -168,6 +168,20 @@ def _cobol_parser(config: Config, gateway=None, store=None):
     return base
 
 
+def _context_provider(config: Config, gateway, store, no_rag: bool):
+    """Build a retrieval ContextProvider when an embedding index is available.
+
+    Returns None (no augmentation) when there is no LLM, RAG is disabled, no
+    embeddings provider is configured, or no embeddings have been built.
+    """
+    if gateway is None or no_rag or config.llm.embeddings is None:
+        return None
+    from .retrieval import ContextProvider
+
+    cp = ContextProvider(store, gateway)
+    return cp if cp.has_embeddings() else None
+
+
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(__version__, prog_name="legacylens")
 @click.option(
@@ -262,8 +276,9 @@ def index(ctx: Context) -> None:
     help="Exit non-zero if a non-suppressed finding is at/above this severity (overrides config).",
 )
 @click.option("--new-only", is_flag=True, help="With --fail-on, gate only on findings new vs the baseline.")
+@click.option("--no-rag", is_flag=True, help="Disable retrieval-augmented LLM context even if embeddings exist.")
 @pass_ctx
-def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool) -> None:
+def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool, no_rag: bool) -> None:
     """Parse sources and run security/compliance analysis."""
     log = get_logger()
     config = ctx.config
@@ -339,6 +354,7 @@ def analyze(ctx: Context, no_llm: bool, fail_on: str | None, new_only: bool) -> 
             parser=parser,
             custom_packs=custom_packs,
             frameworks=frameworks,
+            context_provider=_context_provider(config, gateway, store, no_rag),
         )
         findings = analyzer.analyze_estate(store)
         # Apply suppressions (false positives / accepted) before persisting.
@@ -513,14 +529,9 @@ def doc(ctx: Context, no_llm: bool, no_rag: bool) -> None:
     parser = _cobol_parser(config, gateway, store=store)
 
     # Retrieval-augment LLM prose with related artifacts when embeddings are available.
-    context_provider = None
-    if gateway is not None and not no_rag and config.llm.embeddings is not None:
-        from .retrieval import ContextProvider
-
-        cp = ContextProvider(store, gateway)
-        if cp.has_embeddings():
-            context_provider = cp
-            log.info("Retrieval-augmented documentation enabled (embedding index found).")
+    context_provider = _context_provider(config, gateway, store, no_rag)
+    if context_provider is not None:
+        log.info("Retrieval-augmented documentation enabled (embedding index found).")
     generator = DocGenerator(gateway=gateway, context_provider=context_provider)
     docs_dir = config.output.dir / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
