@@ -71,6 +71,28 @@ ecosystem has no "DVWA for COBOL"). Security detection is therefore validated by
    (`VULN.cbl`, `VULNJOB.jcl`) covering CWE-798, CWE-89, CWE-532, and CWE-94, asserted
    by [tests/test_security.py](../tests/test_security.py).
 
+## ANTLR parser backend validation
+
+The optional ANTLR COBOL backend (`parser.backend: antlr`) was generated
+(`scripts/build_antlr.py`) and run against the COBOL corpora, head-to-head with the
+default regex backend:
+
+| Repo | COBOL files | Paragraphs (regex → antlr) | CALL | COPY |
+|---|---|---|---|---|
+| CardDemo | 106 | 1051 → **1051** | 64 → 64 | 337 → 337 |
+| Bank-of-Z | 103 | 786 → **786** | 44 → 44 | 120 → 120 |
+| zopeneditor-sample | 13 | 87 → **87** | 3 → 3 | 21 → 21 |
+
+Across **222 COBOL files the ANTLR backend ran without errors** and reached exact
+parity with the regex parser on paragraphs, CALL, and COPY; data-item counts agree
+to within ~1%. Getting there surfaced (and fixed) a few issues:
+
+| Issue | Fix |
+|---|---|
+| ANTLR-parsed artifacts were reported as "used the LLM fallback (inferred)" | reporting now keys on the `+llm` method, not "≠ grammar" |
+| Starter grammar's `NAME '.'` over-matched sentence endings as paragraphs | anchored paragraph labels to line starts (`NL NAME DOT`) |
+| Verb labels (`EXIT.`, `GOBACK.`) and ID/ENV headers (`AUTHOR.`) counted as paragraphs | listener tracks the division and applies the same verb blocklist as the regex parser |
+
 ## Notes
 
 - **PLI-2000** is a PL/I *compiler conformance / torture-test* suite, not

@@ -35,7 +35,9 @@ divisionName    : IDENTIFICATION | ENVIRONMENT | DATA | PROCEDURE | NAME ;
 copyStmt        : COPY NAME ;
 callStmt        : CALL ( STRING | NAME ) ;
 dataDescription : LEVEL NAME ;
-paragraph       : NAME DOT ;
+// A paragraph label is a NAME + period alone at the start of a line (after a line
+// break) — this excludes sentence-ending `... NAME.` and `PERFORM X.` false matches.
+paragraph       : NL NAME DOT ;
 anyToken        : . ;
 
 // ------- Lexer (upper-case; input is upper-cased before lexing) -------
@@ -51,5 +53,6 @@ LEVEL          : [0-9][0-9]? ;
 NAME           : [A-Z0-9] [A-Z0-9-]* ;
 STRING         : '\'' ~['\r\n]* '\'' | '"' ~["\r\n]* '"' ;
 DOT            : '.' ;
-WS             : [ \t\r\n]+ -> skip ;
+NL             : [\r\n]+ ;              // significant: anchors paragraph labels
+WS             : [ \t]+ -> skip ;
 ANY            : . ;

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
-
 import pytest
 
 from legacylens.config import Config, ParserBackend
@@ -12,7 +10,19 @@ from legacylens.parsing.antlr.backend import AntlrUnavailable
 
 FIXTURES = __import__("pathlib").Path(__file__).parent / "fixtures"
 
-_ANTLR_AVAILABLE = importlib.util.find_spec("antlr4") is not None
+
+def _antlr_built() -> bool:
+    """True only when the ANTLR runtime AND generated parser are both present."""
+    try:
+        from legacylens.parsing.antlr.backend import AntlrCobolParser
+
+        AntlrCobolParser()
+        return True
+    except Exception:
+        return False
+
+
+ANTLR_BUILT = _antlr_built()
 
 
 def test_config_defaults_to_regex_backend():
@@ -47,36 +57,34 @@ def test_factory_returns_regex_by_default():
     assert isinstance(parser, CobolParser)
 
 
+@pytest.mark.skipif(ANTLR_BUILT, reason="ANTLR is built here; fallback path not exercised")
 def test_factory_antlr_falls_back_to_regex_when_unavailable():
-    # ANTLR parser is not generated in this environment → graceful fallback.
     parser = build_cobol_parser("antlr", fallback_to_regex=True)
     assert isinstance(parser, CobolParser)
 
 
+@pytest.mark.skipif(ANTLR_BUILT, reason="ANTLR is built here; unavailability path not exercised")
 def test_factory_antlr_raises_when_fallback_disabled():
-    if _ANTLR_AVAILABLE and importlib.util.find_spec("legacylens.parsing.antlr._generated") is not None:
-        pytest.skip("ANTLR parser is generated; unavailability path not exercised here")
     with pytest.raises(AntlrUnavailable):
         build_cobol_parser("antlr", fallback_to_regex=False)
 
 
-def test_regex_and_selected_backend_produce_same_interface():
-    # Whichever backend the factory returns, it must satisfy the parse() contract.
-    parser = build_cobol_parser("antlr", fallback_to_regex=True)  # regex here
+def test_selected_backend_produces_same_interface():
+    # Whichever backend the factory returns (regex or antlr), the contract holds.
+    parser = build_cobol_parser("antlr", fallback_to_regex=True)
     result = parser.parse((FIXTURES / "cobol" / "PAYROLL.cbl").read_text(), kind="program")
     assert result.program.program_id == "PAYROLL"
 
 
-@pytest.mark.skipif(
-    not (_ANTLR_AVAILABLE and importlib.util.find_spec("legacylens.parsing.antlr._generated")),
-    reason="ANTLR runtime + generated parser not present (run scripts/build_antlr.py)",
-)
+@pytest.mark.skipif(not ANTLR_BUILT, reason="ANTLR not generated (run scripts/build_antlr.py)")
 def test_antlr_backend_parses_when_built():
     from legacylens.parsing.antlr.backend import AntlrCobolParser
 
-    parser = AntlrCobolParser()
-    result = parser.parse((FIXTURES / "cobol" / "PAYROLL.cbl").read_text(), kind="program")
+    result = AntlrCobolParser().parse(
+        (FIXTURES / "cobol" / "PAYROLL.cbl").read_text(), kind="program"
+    )
     assert result.method == "antlr"
     assert result.program.program_id == "PAYROLL"
-    assert any(c.target == "TAXCALC" for c in result.program.calls)
+    assert {p.name for p in result.program.paragraphs} == {"MAIN-PARA", "INIT-PARA", "WRITE-PARA"}
+    assert any(c.target == "TAXCALC" and not c.dynamic for c in result.program.calls)
     assert any(c.name == "EMPREC" for c in result.program.copies)

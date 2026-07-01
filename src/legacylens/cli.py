@@ -267,7 +267,7 @@ def analyze(ctx: Context, no_llm: bool) -> None:
             totals["data_items"] += len(prog.data_items)
             if result.confidence < 0.5:
                 totals["low_confidence"] += 1
-            if result.method != "grammar":
+            if "llm" in result.method:  # e.g. "grammar+llm" — not the ANTLR backend
                 totals["llm_assisted"] += 1
 
         # JCL and PL/I structural counts.

@@ -13,7 +13,7 @@ back to the regex backend.
 
 from __future__ import annotations
 
-from ..cobol import _detect_fixed_format, _normalize
+from ..cobol import _PARAGRAPH_FALSE_POSITIVES, _detect_fixed_format, _normalize
 from ..model import (
     CallStatement,
     CobolProgram,
@@ -113,6 +113,10 @@ def _build_listener(base, program: CobolProgram):
     Enter-method names follow ANTLR's convention for the rule names in Cobol.g4.
     """
 
+    # Track the current division so paragraph labels are only accepted inside the
+    # PROCEDURE DIVISION (the island grammar has no division context on its own).
+    state = {"division": None}
+
     class _Listener(base):  # type: ignore[misc, valid-type]
         def enterProgramId(self, ctx):
             name = _text(ctx.NAME())
@@ -122,6 +126,7 @@ def _build_listener(base, program: CobolProgram):
 
         def enterDivision(self, ctx):
             name = (_text(ctx.divisionName()) or "").upper()
+            state["division"] = name
             if name and name not in program.divisions:
                 program.divisions.append(name)
 
@@ -145,10 +150,20 @@ def _build_listener(base, program: CobolProgram):
 
         def enterParagraph(self, ctx):
             name = _text(ctx.NAME())
-            if name:
-                program.paragraphs.append(Paragraph(name=name.upper(), line=_line(ctx)))
+            if not name:
+                return
+            upper = name.upper()
+            # Paragraphs live in the PROCEDURE DIVISION; exclude verb labels
+            # (EXIT./GOBACK./END-PERFORM.) that also parse as `NAME .`.
+            if state["division"] != "PROCEDURE" or upper in _PARAGRAPH_FALSE_POSITIVES:
+                return
+            program.paragraphs.append(Paragraph(name=upper, line=_line(ctx)))
 
         def enterDataDescription(self, ctx):
+            # Data items appear in the DATA DIVISION or a copybook fragment (no
+            # division), never in PROCEDURE — matches the regex parser's scoping.
+            if state["division"] == "PROCEDURE":
+                return
             level = _text(ctx.LEVEL())
             name = _text(ctx.NAME())
             if level and name:
