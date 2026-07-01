@@ -77,6 +77,25 @@ Key principles:
 
 ### Choosing your LLM provider
 
+**Steps to enable an LLM:**
+
+1. **Create `llm_config.yaml`** next to your `audit.yaml` (copy
+   [examples/llm_config.example.yaml](examples/llm_config.example.yaml)), and make
+   sure `audit.yaml` has **no `llm:` block**.
+2. **Fill in `type`, `url`, `model`, and `key`** for your provider (table below).
+   Prefer `api_key_env: NAME` instead of `key:` to keep the key in an env var.
+3. *(Optional)* add `embedding_model:` to enable `embed`/`search` + retrieval-augmented
+   docs and security.
+4. **Run with the LLM on** — i.e. *without* `--no-llm`:
+   ```bash
+   legacylens index
+   legacylens analyze            # adds LLM advisory findings (flagged for review)
+   legacylens doc                # fills in Purpose / Business-logic prose
+   legacylens embed              # optional: build the embedding index for RAG
+   ```
+5. Everything else (parsing, graph, CWE/OWASP + regulatory findings, all output
+   formats) works the same with or without an LLM.
+
 **Easiest — a 4-line `llm_config.yaml`.** Create it next to your `audit.yaml` (and
 leave the `llm:` block out of `audit.yaml`); legacylens auto-detects it:
 
