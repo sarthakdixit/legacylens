@@ -19,7 +19,7 @@ For every repository the full pipeline was run:
 | **JCL** | [benjaminthompson1/JCL](https://github.com/benjaminthompson1/JCL) | 156 JCL (**extensionless PDS members**) | 326 nodes / 475 edges, 0 cycles | ✅ 6 findings (1 high, 5 low) |
 | **JCL** | [IBM/zopeneditor-sample](https://github.com/IBM/zopeneditor-sample) | 13 COBOL, 10 JCL, 7 PL/I | 33 nodes / 57 edges, 0 cycles | ✅ 3 findings (3 med) |
 | **PL/I** | [IBM/zopeneditor-sample](https://github.com/IBM/zopeneditor-sample) | (see above — multi-language sample) | — | ✅ clean PL/I parse (7 programs) |
-| **PL/I** | [Steadsoft/PLI-2000](https://github.com/Steadsoft/PLI-2000) | 144 PL/I (compiler **torture-test** corpus) | 181 nodes / 1098 edges, 1 cycle | ⚠️ over-connected — see *Known limitations* |
+| **PL/I** | [Steadsoft/PLI-2000](https://github.com/Steadsoft/PLI-2000) | 144 PL/I (compiler **torture-test** corpus) | 155 nodes / 885 edges, 0 cycles | ✅ parses; internal procedures resolved |
 | **VULN** | *(no public vulnerable-COBOL repo exists)* | — | — | validated via real findings + bundled fixture (below) |
 
 A concrete sample of real output is committed at
@@ -54,6 +54,7 @@ not. Each was fixed with a regression test:
 | `CALL` matched inside PL/I string literals | PLI-2000 | `5fec67f` |
 | PL/I internal-procedure calls modeled as cross-program edges | zopeneditor / PLI-2000 | `5fec67f` |
 | Copybook and same-named program (CICS commarea copybooks) collapsed into one node, creating false `COPY` cycles | Bank-of-Z | `5fec67f` |
+| PL/I procedures with the label on a separate line (`run_inner_proc:` \n `proc;`) went undetected, so internal calls leaked as unresolved cross-program edges | PLI-2000 | `9d97d1d` |
 
 Net effect: noisy findings/cycles were eliminated while genuine signal was retained
 (e.g. CardDemo 32 → 10 findings; Bank-of-Z 11 → 0 false cycles).
@@ -70,14 +71,15 @@ ecosystem has no "DVWA for COBOL"). Security detection is therefore validated by
    (`VULN.cbl`, `VULNJOB.jcl`) covering CWE-798, CWE-89, CWE-532, and CWE-94, asserted
    by [tests/test_security.py](../tests/test_security.py).
 
-## Known limitations (documented, not bugs)
+## Notes
 
 - **PLI-2000** is a PL/I *compiler conformance / torture-test* suite, not
-  representative business PL/I. Its files are fragments that the deliberately
-  lightweight v1 PL/I parser cannot always resolve into procedures, so internal
-  calls leak as cross-program edges and over-connect the graph (1 large cycle). The
-  representative PL/I corpus (`zopeneditor-sample`, real IBM samples) parses cleanly.
-  Fuller PL/I procedure resolution is a planned v2 enhancement.
+  representative business PL/I. After the separate-line procedure-detection fix
+  (`9d97d1d`), internal calls resolve correctly and the graph has no cycles; edges
+  dropped 1098 → 885 and unresolved references 40 → 15. The residual edges and
+  unresolved names are genuine — the corpus is made of standalone fragments that
+  reference truly-external entries — so they are reported accurately rather than
+  suppressed.
 
 ## Reproducing
 
