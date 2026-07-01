@@ -34,8 +34,9 @@ dev = ["pytest>=8.0"]
 antlr = ["antlr4-python3-runtime>=4.13"]
 
 [project.urls]
-Homepage = "https://github.com/your-org/legacylens"
-Repository = "https://github.com/your-org/legacylens"
+Homepage = "https://github.com/sarthakdixit/legacylens"
+Repository = "https://github.com/sarthakdixit/legacylens"
+Changelog = "https://github.com/sarthakdixit/legacylens/blob/main/CHANGELOG.md"
 
 [project.scripts]
 legacylens = "legacylens.bootstrap:main"
