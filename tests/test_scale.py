@@ -112,6 +112,28 @@ def test_pli_block_comment_ignored():
     assert "GHOST" not in targets
 
 
+def test_pli_procedure_label_on_separate_line():
+    # Real-world (PLI-2000): the label and PROCEDURE/PROC keyword are on separate
+    # lines, and CALLs target internal procedures.
+    src = (
+        "largetst:\n"
+        "   procedure options (main);\n"
+        "   call run_inner_proc;\n"
+        "run_inner_proc:\n"
+        "   proc;\n"
+        "   end run_inner_proc;\n"
+        "end largetst;\n"
+    )
+    prog = PliParser().parse(src, fallback_name="X")
+    assert prog.name == "LARGETST"  # the OPTIONS(MAIN) procedure, not the filename
+    names = {p.name for p in prog.procedures}
+    assert {"LARGETST", "RUN_INNER_PROC"} <= names
+    assert any(p.is_main and p.name == "LARGETST" for p in prog.procedures)
+    # RUN_INNER_PROC is an internal procedure, so the builder resolves the CALL
+    # internally rather than as a cross-program edge.
+    assert "RUN_INNER_PROC" in {t for t, _ in prog.calls}
+
+
 def test_pli_call_inside_string_literal_is_ignored():
     # Real-world false positive from the PLI-2000 compiler test corpus.
     prog = PliParser().parse(
