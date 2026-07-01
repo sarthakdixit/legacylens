@@ -31,8 +31,16 @@ def test_bootstrap_runs_preflight_then_cli(monkeypatch):
     import legacylens.bootstrap as boot
 
     calls = {}
-    monkeypatch.setattr("legacylens._preflight.ensure_dependencies", lambda: calls.setdefault("preflight", True))
-    monkeypatch.setattr("legacylens.cli.main", lambda argv=None: calls.setdefault("argv", argv) or 0)
+
+    def fake_preflight():
+        calls["preflight"] = True
+
+    def fake_cli(argv=None):
+        calls["argv"] = argv
+        return 0
+
+    monkeypatch.setattr("legacylens._preflight.ensure_dependencies", fake_preflight)
+    monkeypatch.setattr("legacylens.cli.main", fake_cli)
 
     rc = boot.main(["doctor"])
     assert rc == 0
