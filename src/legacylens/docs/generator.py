@@ -30,8 +30,10 @@ def _cite(rel_path: str | None, line: int) -> str:
 
 
 class DocGenerator:
-    def __init__(self, gateway=None):
+    def __init__(self, gateway=None, context_provider=None):
         self.gateway = gateway
+        # Optional retrieval-augmentation: injects related artifacts into LLM prompts.
+        self.context_provider = context_provider
 
     # -- per-artifact ------------------------------------------------------- #
     def program_doc(
@@ -170,6 +172,19 @@ class DocGenerator:
             "Do not invent details not supported by the structure.\n\n"
             f"STRUCTURE for {name} ({rel_path}):\n{json.dumps(skeleton, indent=2)}"
         )
+
+        # Retrieval-augmentation: add semantically-related artifacts as context.
+        if self.context_provider is not None:
+            query = f"{name} " + " ".join(
+                skeleton["calls"] + skeleton["copies"] + [name]
+            )
+            related = self.context_provider.related(query, exclude_rel=rel_path)
+            if related:
+                blocks = "\n\n".join(f"--- {rp} ---\n{snip}" for rp, snip in related)
+                prompt += (
+                    "\n\nRELATED ARTIFACTS (context only — do NOT document these, "
+                    "use them to understand how this program is used):\n" + blocks
+                )
         try:
             resp = self.gateway.complete(
                 "documentation", CompletionRequest(messages=[Message(role="user", content=prompt)])

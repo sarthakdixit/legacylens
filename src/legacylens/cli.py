@@ -499,8 +499,9 @@ def _doc_filename(name: str) -> str:
 
 @cli.command()
 @click.option("--no-llm", is_flag=True, help="Disable LLM prose; emit structural docs only.")
+@click.option("--no-rag", is_flag=True, help="Disable retrieval-augmented context even if embeddings exist.")
 @pass_ctx
-def doc(ctx: Context, no_llm: bool) -> None:
+def doc(ctx: Context, no_llm: bool, no_rag: bool) -> None:
     """Generate modern documentation from analysis results."""
     log = get_logger()
     config = ctx.config
@@ -510,7 +511,17 @@ def doc(ctx: Context, no_llm: bool) -> None:
     store = IndexStore(config.index.path)
     gateway = None if no_llm else build_gateway(config)
     parser = _cobol_parser(config, gateway, store=store)
-    generator = DocGenerator(gateway=gateway)
+
+    # Retrieval-augment LLM prose with related artifacts when embeddings are available.
+    context_provider = None
+    if gateway is not None and not no_rag and config.llm.embeddings is not None:
+        from .retrieval import ContextProvider
+
+        cp = ContextProvider(store, gateway)
+        if cp.has_embeddings():
+            context_provider = cp
+            log.info("Retrieval-augmented documentation enabled (embedding index found).")
+    generator = DocGenerator(gateway=gateway, context_provider=context_provider)
     docs_dir = config.output.dir / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
 

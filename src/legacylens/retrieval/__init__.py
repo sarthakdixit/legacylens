@@ -8,6 +8,7 @@ artifacts as context. Vectors persist in the embedded SQLite store and are rebui
 incrementally (skipped when an artifact's content hash is unchanged).
 """
 
+from .context import ContextProvider
 from .retriever import Retriever
 
-__all__ = ["Retriever"]
+__all__ = ["Retriever", "ContextProvider"]

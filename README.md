@@ -39,6 +39,10 @@ legacylens embed                # build the semantic embedding index (BYO embedd
 legacylens search "QUERY"       # find the most relevant artifacts
 ```
 
+Once an embedding index is built (`legacylens embed`), `legacylens doc` is
+**retrieval-augmented**: each program's LLM summary is given the most semantically
+related artifacts as extra context (disable with `doc --no-rag`).
+
 Run `legacylens --help` for all commands and `legacylens <cmd> --help` for details.
 
 Useful flags: `--no-llm` (on `analyze`/`doc`) runs fully deterministically with no model
