@@ -38,7 +38,7 @@ Homepage = "https://github.com/your-org/legacylens"
 Repository = "https://github.com/your-org/legacylens"
 
 [project.scripts]
-legacylens = "legacylens.cli:main"
+legacylens = "legacylens.bootstrap:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

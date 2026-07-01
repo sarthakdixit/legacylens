@@ -42,7 +42,13 @@ bash scripts/install.sh
 
 ```bash
 legacylens --help
+legacylens doctor          # report Python + dependency status
 ```
+
+On first run, legacylens verifies its required libraries are present; if any are
+missing (e.g. running from a clone without installing), it asks permission and
+installs them with pip (or set `LEGACYLENS_AUTO_INSTALL=1` to consent
+non-interactively). `legacylens doctor` shows the same status on demand.
 
 ### Alternative — `pip`
 

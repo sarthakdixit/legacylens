@@ -711,6 +711,25 @@ def search(ctx: Context, query: str, top: int) -> None:
         log.info("%.3f  %s", hit.score, hit.rel_path)
 
 
+@cli.command()
+def doctor() -> None:
+    """Report the environment and dependency status."""
+    import importlib.metadata as md
+
+    log = get_logger()
+    log.info("Python %s", sys.version.split()[0])
+    log.info("Required dependencies:")
+    for dist in ("click", "pyyaml", "pydantic", "rich"):
+        try:
+            log.info("  %-10s %s", dist, md.version(dist))
+        except md.PackageNotFoundError:
+            log.warning("  %-10s MISSING — run `legacylens` once to install, or pip install %s", dist, dist)
+    try:
+        log.info("  %-10s %s (optional; for parser.backend=antlr)", "antlr4", md.version("antlr4-python3-runtime"))
+    except md.PackageNotFoundError:
+        log.info("  %-10s not installed (optional; needed only for parser.backend=antlr)", "antlr4")
+
+
 def _load_stored_findings(config: Config) -> list[Finding]:
     if not config.index.path.exists():
         raise LegacyLensError("no index found — run `legacylens analyze` first.")
